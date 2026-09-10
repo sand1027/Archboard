@@ -4,6 +4,8 @@ import { useUiStore } from '@/store/uiStore'
 import { X } from 'lucide-react'
 
 const SHORTCUTS = [
+  { category: 'Mode' },
+  { keys: ['HLD', '/', 'LLD'], desc: 'Toggle in top toolbar' },
   { category: 'Selection' },
   { keys: ['⌘', 'A'], desc: 'Select all' },
   { keys: ['Esc'], desc: 'Deselect' },
@@ -23,6 +25,11 @@ const SHORTCUTS = [
   { category: 'Canvas' },
   { keys: ['⌘', 'G'], desc: 'Toggle grid' },
   { keys: ['⌘', '\\'], desc: 'Toggle snap to grid' },
+  { category: 'Drawing' },
+  { keys: ['V'], desc: 'Select tool' },
+  { keys: ['H'], desc: 'Hand tool' },
+  { keys: ['R'], desc: 'Rectangle / Process' },
+  { keys: ['D'], desc: 'Diamond / Decision' },
 ]
 
 export default function KeyboardShortcutsModal() {

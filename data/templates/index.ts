@@ -9,6 +9,7 @@ export interface Template {
   name: string
   description: string
   preview: string
+  mode: 'hld' | 'lld'
   diagram: Omit<Diagram, 'id' | 'metadata'>
 }
 
@@ -18,6 +19,7 @@ export const templates: Template[] = [
     name: 'Basic Web Application',
     description: 'Simple 3-tier web architecture: Client → API → Database',
     preview: 'Client → DNS → CDN → LB → App Server → DB',
+    mode: 'hld',
     diagram: {
       name: 'Basic Web Application',
       version: 1,
@@ -68,6 +70,7 @@ export const templates: Template[] = [
     name: 'Scalable Web Application',
     description: 'AWS-based scalable architecture with CloudFront, ALB, Redis, and RDS',
     preview: 'Route53 → CloudFront → ALB → ECS → ElastiCache + Aurora',
+    mode: 'hld',
     diagram: {
       name: 'Scalable Web Application (AWS)',
       version: 1,
@@ -129,6 +132,7 @@ export const templates: Template[] = [
     name: 'Event-Driven Architecture',
     description: 'Async event processing with message queues and workers',
     preview: 'API → SQS/Kafka → Workers → DB',
+    mode: 'hld',
     diagram: {
       name: 'Event-Driven Architecture',
       version: 1,
@@ -188,6 +192,7 @@ export const templates: Template[] = [
     name: 'Microservices',
     description: 'API Gateway routing to multiple independent microservices with own datastores',
     preview: 'Gateway → Services → Databases',
+    mode: 'hld',
     diagram: {
       name: 'Microservices Architecture',
       version: 1,
@@ -243,8 +248,198 @@ export const templates: Template[] = [
       ],
     },
   },
+  {
+    id: 'lld-login-flow',
+    name: 'Login Flowchart',
+    description: 'User login decision flow with success and error paths',
+    preview: 'Start → Credentials → Valid? → Session / Error',
+    mode: 'lld',
+    diagram: {
+      name: 'Login Flowchart',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 0.9 },
+      nodes: [
+        {
+          id: 's1', type: 'shape', position: { x: 260, y: 40 }, width: 140, height: 56,
+          style: { width: 140, height: 56 },
+          data: { shapeType: 'terminator', label: 'Start', fill: '#ffffff', stroke: '#334155', strokeWidth: 2, cornerRadius: 999, fontSize: 13, textColor: '#0f172a' },
+        },
+        {
+          id: 's2', type: 'shape', position: { x: 250, y: 140 }, width: 160, height: 70,
+          style: { width: 160, height: 70 },
+          data: { shapeType: 'parallelogram', label: 'Enter credentials', fill: '#ffffff', stroke: '#334155', strokeWidth: 2, fontSize: 13, textColor: '#0f172a' },
+        },
+        {
+          id: 's3', type: 'shape', position: { x: 250, y: 250 }, width: 160, height: 100,
+          style: { width: 160, height: 100 },
+          data: { shapeType: 'diamond', label: 'Valid?', fill: '#ffffff', stroke: '#334155', strokeWidth: 2, fontSize: 13, textColor: '#0f172a' },
+        },
+        {
+          id: 's4', type: 'shape', position: { x: 80, y: 400 }, width: 150, height: 70,
+          style: { width: 150, height: 70 },
+          data: { shapeType: 'rectangle', label: 'Create session', fill: '#ffffff', stroke: '#334155', strokeWidth: 2, cornerRadius: 4, fontSize: 13, textColor: '#0f172a' },
+        },
+        {
+          id: 's5', type: 'shape', position: { x: 420, y: 400 }, width: 150, height: 70,
+          style: { width: 150, height: 70 },
+          data: { shapeType: 'rectangle', label: 'Show error', fill: '#ffffff', stroke: '#334155', strokeWidth: 2, cornerRadius: 4, fontSize: 13, textColor: '#0f172a' },
+        },
+        {
+          id: 's6', type: 'shape', position: { x: 95, y: 520 }, width: 120, height: 50,
+          style: { width: 120, height: 50 },
+          data: { shapeType: 'terminator', label: 'End', fill: '#ffffff', stroke: '#334155', strokeWidth: 2, cornerRadius: 999, fontSize: 13, textColor: '#0f172a' },
+        },
+      ],
+      edges: [
+        { id: 'fe1', source: 's1', target: 's2', type: 'architecture', data: { relationKind: 'association' } },
+        { id: 'fe2', source: 's2', target: 's3', type: 'architecture', data: { relationKind: 'association' } },
+        { id: 'fe3', source: 's3', target: 's4', type: 'architecture', data: { relationKind: 'association', label: 'yes' } },
+        { id: 'fe4', source: 's3', target: 's5', type: 'architecture', data: { relationKind: 'association', label: 'no' } },
+        { id: 'fe5', source: 's4', target: 's6', type: 'architecture', data: { relationKind: 'association' } },
+      ],
+    },
+  },
+  {
+    id: 'lld-order-class',
+    name: 'Order Class Model',
+    description: 'Simple UML class diagram for orders and users',
+    preview: 'User → Order → OrderItem',
+    mode: 'lld',
+    diagram: {
+      name: 'Order Class Model',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 0.95 },
+      nodes: [
+        {
+          id: 'c1', type: 'umlClass', position: { x: 80, y: 80 }, width: 200, height: 160,
+          style: { width: 200, height: 160 }, connectable: true,
+          data: {
+            name: 'User', stereotype: 'class',
+            attributes: ['+ id: string', '+ email: string'],
+            methods: ['+ placeOrder(): Order'],
+            fill: '#ffffff', stroke: '#334155',
+          },
+        },
+        {
+          id: 'c2', type: 'umlClass', position: { x: 360, y: 80 }, width: 200, height: 160,
+          style: { width: 200, height: 160 }, connectable: true,
+          data: {
+            name: 'Order', stereotype: 'class',
+            attributes: ['+ id: string', '+ total: number', '+ status: Status'],
+            methods: ['+ addItem(item)', '+ checkout()'],
+            fill: '#ffffff', stroke: '#334155',
+          },
+        },
+        {
+          id: 'c3', type: 'umlClass', position: { x: 360, y: 300 }, width: 200, height: 140,
+          style: { width: 200, height: 140 }, connectable: true,
+          data: {
+            name: 'OrderItem', stereotype: 'class',
+            attributes: ['+ sku: string', '+ qty: number'],
+            methods: [],
+            fill: '#ffffff', stroke: '#334155',
+          },
+        },
+        {
+          id: 'c4', type: 'umlClass', position: { x: 620, y: 100 }, width: 160, height: 140,
+          style: { width: 160, height: 140 }, connectable: true,
+          data: {
+            name: 'Status', stereotype: 'enum',
+            attributes: ['PENDING', 'PAID', 'SHIPPED'],
+            methods: [],
+            fill: '#ffffff', stroke: '#334155',
+          },
+        },
+      ],
+      edges: [
+        { id: 'ce1', source: 'c1', target: 'c2', type: 'architecture', data: { relationKind: 'association', label: 'places' } },
+        { id: 'ce2', source: 'c2', target: 'c3', type: 'architecture', data: { relationKind: 'composition', label: 'contains' } },
+        { id: 'ce3', source: 'c2', target: 'c4', type: 'architecture', data: { relationKind: 'dependency' } },
+      ],
+    },
+  },
+  {
+    id: 'lld-checkout-seq',
+    name: 'Checkout Sequence',
+    description: 'Sequence diagram for checkout across actor, API, and payment',
+    preview: 'Actor → API → Payment → API',
+    mode: 'lld',
+    diagram: {
+      name: 'Checkout Sequence',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 0.9 },
+      nodes: [
+        {
+          id: 'l1', type: 'umlLifeline', position: { x: 80, y: 40 }, width: 120, height: 360,
+          style: { width: 120, height: 360 }, connectable: true,
+          data: { label: 'Customer', kind: 'actor', activations: [{ start: 110, end: 260 }], fill: '#ffffff', stroke: '#334155' },
+        },
+        {
+          id: 'l2', type: 'umlLifeline', position: { x: 280, y: 40 }, width: 120, height: 360,
+          style: { width: 120, height: 360 }, connectable: true,
+          data: { label: 'CheckoutAPI', kind: 'boundary', activations: [{ start: 120, end: 280 }], fill: '#ffffff', stroke: '#334155' },
+        },
+        {
+          id: 'l3', type: 'umlLifeline', position: { x: 480, y: 40 }, width: 120, height: 360,
+          style: { width: 120, height: 360 }, connectable: true,
+          data: { label: 'Payment', kind: 'control', activations: [{ start: 160, end: 240 }], fill: '#ffffff', stroke: '#334155' },
+        },
+      ],
+      edges: [
+        { id: 'se1', source: 'l1', target: 'l2', sourceHandle: 'right', targetHandle: 'left', type: 'architecture', data: { relationKind: 'message-sync', label: 'checkout()' } },
+        { id: 'se2', source: 'l2', target: 'l3', sourceHandle: 'right', targetHandle: 'left', type: 'architecture', data: { relationKind: 'message-sync', label: 'charge()' } },
+        { id: 'se3', source: 'l3', target: 'l2', sourceHandle: 'left', targetHandle: 'right', type: 'architecture', data: { relationKind: 'message-return', label: 'ok' } },
+      ],
+    },
+  },
+  {
+    id: 'lld-users-orders-er',
+    name: 'Users–Orders ER',
+    description: 'Entity-relationship model for users and orders',
+    preview: 'User 1—N Order',
+    mode: 'lld',
+    diagram: {
+      name: 'Users–Orders ER',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        {
+          id: 'e1', type: 'umlEntity', position: { x: 100, y: 120 }, width: 180, height: 140,
+          style: { width: 180, height: 140 }, connectable: true,
+          data: {
+            name: 'User',
+            attributes: [
+              { name: 'id', type: 'uuid', kind: 'pk' },
+              { name: 'email', type: 'string', kind: 'attr' },
+            ],
+            fill: '#ffffff', stroke: '#334155',
+          },
+        },
+        {
+          id: 'e2', type: 'umlEntity', position: { x: 420, y: 120 }, width: 180, height: 160,
+          style: { width: 180, height: 160 }, connectable: true,
+          data: {
+            name: 'Order',
+            attributes: [
+              { name: 'id', type: 'uuid', kind: 'pk' },
+              { name: 'user_id', type: 'uuid', kind: 'fk' },
+              { name: 'total', type: 'money', kind: 'attr' },
+            ],
+            fill: '#ffffff', stroke: '#334155',
+          },
+        },
+      ],
+      edges: [
+        { id: 're1', source: 'e1', target: 'e2', type: 'architecture', data: { relationKind: 'one-to-many', label: 'places' } },
+      ],
+    },
+  },
 ]
 
 export function getTemplateById(id: string): Template | undefined {
   return templates.find((t) => t.id === id)
+}
+
+export function getTemplatesByMode(mode: 'hld' | 'lld'): Template[] {
+  return templates.filter((t) => t.mode === mode)
 }

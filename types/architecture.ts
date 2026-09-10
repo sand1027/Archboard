@@ -1,5 +1,7 @@
 // Core architecture types
 
+import type { RelationKind } from './lld'
+
 export type Provider = 'aws' | 'gcp' | 'azure' | 'kubernetes' | 'generic'
 
 export type ComponentCategory =
@@ -82,9 +84,13 @@ export interface ArchitectureNodeData extends Record<string, unknown> {
   height?: number
 }
 
+export type { RelationKind } from './lld'
+
 export interface ArchitectureEdgeData extends Record<string, unknown> {
   protocol?: Protocol
   connectionType?: ConnectionType
+  /** UML / ER / sequence relationship semantics (LLD) */
+  relationKind?: RelationKind
   label?: string
   animated?: boolean
   edgeLineStyle?: EdgeLineStyle
@@ -114,6 +120,12 @@ export type ShapeType =
   | 'arrow'   // freehand stroke with arrowhead (start → end)
   | 'line'    // freehand stroke (start → end)
   | 'text'
+  // Flowchart primitives (LLD)
+  | 'terminator'
+  | 'document'
+  | 'preparation'
+  | 'connector'
+  | 'note'
 
 export type StrokeStyle = 'solid' | 'dashed' | 'dotted'
 export type ArrowHeadType = 'none' | 'arrow' | 'arrowclosed' | 'diamond' | 'circle'

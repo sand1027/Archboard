@@ -12,30 +12,57 @@ import {
   type Node,
   type Edge,
 } from '@xyflow/react'
-import type { ArchitectureNode, ArchitectureEdge } from '@/types/diagram'
+import type { ArchitectureNode, ArchitectureEdge, BoardMode, BoardSnapshot } from '@/types/diagram'
 import type { Viewport } from '@/types/architecture'
 
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function emptyBoard(name: string): BoardSnapshot {
+  return {
+    diagramId: generateId(),
+    diagramName: name,
+    nodes: [],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  }
+}
+
+function snapshotFromState(state: {
+  diagramId: string
+  diagramName: string
+  nodes: ArchitectureNode[]
+  edges: ArchitectureEdge[]
+  viewport: Viewport
+}): BoardSnapshot {
+  return {
+    diagramId: state.diagramId,
+    diagramName: state.diagramName,
+    nodes: state.nodes,
+    edges: state.edges,
+    viewport: state.viewport,
+  }
+}
+
 interface DiagramState {
-  // Data
+  activeBoard: BoardMode
+  boards: { hld: BoardSnapshot; lld: BoardSnapshot }
+
   diagramId: string
   diagramName: string
   nodes: ArchitectureNode[]
   edges: ArchitectureEdge[]
   viewport: Viewport
 
-  // Selection
   selectedNodeIds: string[]
   selectedEdgeIds: string[]
-
-  // Clipboard
   clipboard: { nodes: ArchitectureNode[]; edges: ArchitectureEdge[] } | null
 
-  // Canvas settings
   snapToGrid: boolean
   gridSize: number
   showGrid: boolean
 
-  // Actions
   setDiagramName: (name: string) => void
   setNodes: (nodes: ArchitectureNode[]) => void
   setEdges: (edges: ArchitectureEdge[]) => void
@@ -65,16 +92,27 @@ interface DiagramState {
   clearDiagram: () => void
   selectAll: () => void
   deleteSelected: () => void
+  switchBoard: (mode: BoardMode) => void
+  hydrateBoards: (payload: {
+    activeBoard: BoardMode
+    boards: { hld: BoardSnapshot; lld: BoardSnapshot }
+  }) => void
+  getPersistPayload: () => {
+    activeBoard: BoardMode
+    boards: { hld: BoardSnapshot; lld: BoardSnapshot }
+  }
 }
 
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
+const initialHld = emptyBoard('Untitled Diagram')
+const initialLld = emptyBoard('Untitled LLD')
 
 export const useDiagramStore = create<DiagramState>()(
   subscribeWithSelector((set, get) => ({
-    diagramId: generateId(),
-    diagramName: 'Untitled Diagram',
+    activeBoard: 'hld',
+    boards: { hld: initialHld, lld: initialLld },
+
+    diagramId: initialHld.diagramId,
+    diagramName: initialHld.diagramName,
     nodes: [],
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 },
@@ -102,16 +140,22 @@ export const useDiagramStore = create<DiagramState>()(
       })),
 
     onConnect: (connection) =>
-      set((state) => ({
-        edges: addEdge(
-          {
-            ...connection,
-            id: generateId(),
-            data: { connectionType: 'synchronous', protocol: 'HTTPS' },
-          },
-          state.edges as Edge[]
-        ) as ArchitectureEdge[],
-      })),
+      set((state) => {
+        const isLld = state.activeBoard === 'lld'
+        return {
+          edges: addEdge(
+            {
+              ...connection,
+              id: generateId(),
+              type: 'architecture',
+              data: isLld
+                ? { relationKind: 'association', label: '' }
+                : { connectionType: 'synchronous', protocol: 'HTTPS' },
+            },
+            state.edges as Edge[]
+          ) as ArchitectureEdge[],
+        }
+      }),
 
     addNode: (node) =>
       set((state) => ({ nodes: [...state.nodes, node] })),
@@ -250,7 +294,7 @@ export const useDiagramStore = create<DiagramState>()(
     clearDiagram: () =>
       set({
         diagramId: generateId(),
-        diagramName: 'Untitled Diagram',
+        diagramName: get().activeBoard === 'lld' ? 'Untitled LLD' : 'Untitled Diagram',
         nodes: [],
         edges: [],
         viewport: { x: 0, y: 0, zoom: 1 },
@@ -280,6 +324,50 @@ export const useDiagramStore = create<DiagramState>()(
         selectedNodeIds: [],
         selectedEdgeIds: [],
       }))
+    },
+
+    switchBoard: (mode) => {
+      const state = get()
+      if (mode === state.activeBoard) return
+
+      const saved = snapshotFromState(state)
+      const next = state.boards[mode]
+
+      set({
+        boards: { ...state.boards, [state.activeBoard]: saved },
+        activeBoard: mode,
+        diagramId: next.diagramId,
+        diagramName: next.diagramName,
+        nodes: next.nodes,
+        edges: next.edges,
+        viewport: next.viewport,
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+      })
+    },
+
+    hydrateBoards: ({ activeBoard, boards }) => {
+      const current = boards[activeBoard]
+      set({
+        activeBoard,
+        boards,
+        diagramId: current.diagramId,
+        diagramName: current.diagramName,
+        nodes: current.nodes,
+        edges: current.edges,
+        viewport: current.viewport,
+        selectedNodeIds: [],
+        selectedEdgeIds: [],
+      })
+    },
+
+    getPersistPayload: () => {
+      const state = get()
+      const boards = {
+        ...state.boards,
+        [state.activeBoard]: snapshotFromState(state),
+      }
+      return { activeBoard: state.activeBoard, boards }
     },
   }))
 )

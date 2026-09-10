@@ -68,11 +68,31 @@ const PRIMARY_SHAPES: ToolDef[] = [
   { tool: 'text', icon: <Type className="w-4 h-4" />, label: 'Text', shortcut: 'X' },
 ]
 
+const LLD_PRIMARY_SHAPES: ToolDef[] = [
+  { tool: 'rectangle', icon: <Square className="w-4 h-4" />, label: 'Process', shortcut: 'R' },
+  { tool: 'diamond', icon: <Diamond className="w-4 h-4" />, label: 'Decision', shortcut: 'D' },
+  { tool: 'terminator', icon: <span className="text-[11px] font-semibold leading-none">⬭</span>, label: 'Start/End', shortcut: '' },
+  { tool: 'parallelogram', icon: <span className="text-[12px] font-semibold leading-none">▱</span>, label: 'Data', shortcut: 'P' },
+  { tool: 'document', icon: <span className="text-[11px] font-semibold leading-none">☰</span>, label: 'Document', shortcut: '' },
+  { tool: 'arrow', icon: <ArrowRight className="w-4 h-4" />, label: 'Arrow', shortcut: 'A' },
+  { tool: 'line', icon: <Minus className="w-4 h-4" />, label: 'Line', shortcut: 'L' },
+  { tool: 'text', icon: <Type className="w-4 h-4" />, label: 'Text', shortcut: 'X' },
+]
+
 const MORE_SHAPES: ToolDef[] = [
   { tool: 'parallelogram', icon: <span className="text-[12px] font-semibold leading-none">▱</span>, label: 'Parallelogram', shortcut: 'P' },
   { tool: 'cylinder', icon: <span className="text-[12px] font-semibold leading-none">⌭</span>, label: 'Cylinder', shortcut: '' },
   { tool: 'hexagon', icon: <Hexagon className="w-4 h-4" />, label: 'Hexagon', shortcut: '' },
   { tool: 'star', icon: <Star className="w-4 h-4" />, label: 'Star', shortcut: '' },
+]
+
+const LLD_MORE_SHAPES: ToolDef[] = [
+  { tool: 'preparation', icon: <Hexagon className="w-4 h-4" />, label: 'Preparation', shortcut: '' },
+  { tool: 'connector', icon: <Circle className="w-4 h-4" />, label: 'Connector', shortcut: '' },
+  { tool: 'note', icon: <span className="text-[11px] font-semibold leading-none">✎</span>, label: 'Note', shortcut: '' },
+  { tool: 'ellipse', icon: <Circle className="w-4 h-4" />, label: 'Ellipse', shortcut: 'O' },
+  { tool: 'cylinder', icon: <span className="text-[12px] font-semibold leading-none">⌭</span>, label: 'Cylinder', shortcut: '' },
+  { tool: 'triangle', icon: <Triangle className="w-4 h-4" />, label: 'Triangle', shortcut: 'T' },
 ]
 
 const STROKE_WIDTHS = [1, 1.5, 2, 3, 4, 6]
@@ -176,10 +196,13 @@ export default function ShapesToolbar() {
     setDefaultStrokeWidth,
     defaultStrokeStyle,
     setDefaultStrokeStyle,
+    boardMode,
   } = useUiStore()
 
+  const primary = boardMode === 'lld' ? LLD_PRIMARY_SHAPES : PRIMARY_SHAPES
+  const more = boardMode === 'lld' ? LLD_MORE_SHAPES : MORE_SHAPES
   const isShapeTool = activeTool !== 'select' && activeTool !== 'hand'
-  const moreActive = MORE_SHAPES.some((t) => t.tool === activeTool)
+  const moreActive = more.some((t) => t.tool === activeTool)
 
   return (
     <div
@@ -200,7 +223,7 @@ export default function ShapesToolbar() {
 
       <Divider />
 
-      {PRIMARY_SHAPES.map((t) => (
+      {primary.map((t) => (
         <ToolBtn
           key={t.tool}
           active={activeTool === t.tool}
@@ -214,7 +237,7 @@ export default function ShapesToolbar() {
       <Popover
         content={
           <div className="grid grid-cols-2 gap-1 min-w-[160px]">
-            {MORE_SHAPES.map((t) => (
+            {more.map((t) => (
               <button
                 key={t.tool}
                 onClick={() => setActiveTool(t.tool)}

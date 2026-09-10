@@ -5,6 +5,12 @@ import { useHistoryStore } from '@/store/historyStore'
 import NodeProperties from './NodeProperties'
 import EdgeProperties from './EdgeProperties'
 import ShapeProperties from './ShapeProperties'
+import {
+  UmlClassProperties,
+  UmlEntityProperties,
+  UmlLifelineProperties,
+  IconNodeProperties,
+} from './LldProperties'
 import { MousePointer2 } from 'lucide-react'
 
 export default function PropertiesPanel() {
@@ -23,7 +29,15 @@ export default function PropertiesPanel() {
       ? String((selectedNode.data as { shapeType?: string }).shapeType ?? 'shape').replace(/-/g, ' ')
       : selectedNode.type === 'frame'
         ? 'Frame'
-        : (selectedNode.data as { label?: string }).label ?? 'Component'
+        : selectedNode.type === 'umlClass'
+          ? 'UML Class'
+          : selectedNode.type === 'umlEntity'
+            ? 'ER Entity'
+            : selectedNode.type === 'umlLifeline'
+              ? 'Lifeline'
+              : selectedNode.type === 'icon'
+                ? 'Icon'
+                : (selectedNode.data as { label?: string }).label ?? 'Component'
     : selectedEdge
       ? 'Connection'
       : multiSelected
@@ -52,6 +66,18 @@ export default function PropertiesPanel() {
         )}
         {selectedNode?.type === 'shape' && (
           <ShapeProperties node={selectedNode as any} />
+        )}
+        {selectedNode?.type === 'umlClass' && (
+          <UmlClassProperties node={selectedNode} />
+        )}
+        {selectedNode?.type === 'umlEntity' && (
+          <UmlEntityProperties node={selectedNode} />
+        )}
+        {selectedNode?.type === 'umlLifeline' && (
+          <UmlLifelineProperties node={selectedNode} />
+        )}
+        {selectedNode?.type === 'icon' && (
+          <IconNodeProperties node={selectedNode} />
         )}
         {selectedEdge && <EdgeProperties edge={selectedEdge} />}
         {multiSelected && <MultiSelectInfo count={selectedNodeIds.length} />}
