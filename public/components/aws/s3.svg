@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <rect x="4" y="4" width="40" height="40" rx="6" fill="#FF9900" opacity="0.15"/>
+  <rect x="4" y="4" width="40" height="40" rx="6" stroke="#FF9900" stroke-width="2" fill="none"/>
+  <rect x="10" y="16" width="28" height="20" rx="2" fill="#FF9900" opacity="0.2" stroke="#FF9900" stroke-width="1.5"/>
+  <path d="M10 22 Q24 18 38 22" stroke="#FF9900" stroke-width="1"/>
+  <path d="M10 28 Q24 24 38 28" stroke="#FF9900" stroke-width="1"/>
+  <path d="M24 10 L20 16 L28 16 Z" fill="#FF9900"/>
+  <text x="20" y="13" font-family="sans-serif" font-size="6" fill="#C25A00">S3</text>
+</svg>

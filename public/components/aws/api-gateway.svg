@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <rect x="4" y="4" width="40" height="40" rx="6" fill="#FF9900" opacity="0.15"/>
+  <rect x="4" y="4" width="40" height="40" rx="6" stroke="#FF9900" stroke-width="2" fill="none"/>
+  <rect x="10" y="14" width="28" height="5" rx="2" fill="#FF9900" opacity="0.3"/>
+  <rect x="10" y="22" width="22" height="5" rx="2" fill="#FF9900" opacity="0.3"/>
+  <rect x="10" y="30" width="26" height="5" rx="2" fill="#FF9900" opacity="0.3"/>
+  <text x="10" y="18.5" font-family="monospace" font-size="5.5" fill="#C25A00">GET</text>
+  <text x="10" y="26.5" font-family="monospace" font-size="5.5" fill="#C25A00">POST</text>
+  <text x="10" y="34.5" font-family="monospace" font-size="5.5" fill="#C25A00">PUT</text>
+</svg>
