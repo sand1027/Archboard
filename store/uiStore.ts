@@ -2,7 +2,8 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ComponentCategory, Provider, ShapeType, EdgeStylePreset } from '@/types/architecture'
+import type { ComponentCategory, Provider, EdgeStylePreset } from '@/types/architecture'
+import type { BoardMode, LldLibraryTab } from '@/types/lld'
 
 export type ActiveTool =
   | 'select'
@@ -19,6 +20,11 @@ export type ActiveTool =
   | 'text'
   | 'line'
   | 'frame'
+  | 'terminator'
+  | 'document'
+  | 'preparation'
+  | 'connector'
+  | 'note'
 
 type ActivePanel = 'library' | 'inspector' | 'templates'
 type Theme = 'light' | 'dark'
@@ -34,6 +40,9 @@ const DEFAULT_EDGE_STYLE: EdgeStylePreset = {
 }
 
 interface UiState {
+  boardMode: BoardMode
+  lldLibraryTab: LldLibraryTab
+
   // Panel state
   activePanel: ActivePanel
   libraryOpen: boolean
@@ -81,6 +90,8 @@ interface UiState {
   theme: Theme
 
   // Actions
+  setBoardMode: (mode: BoardMode) => void
+  setLldLibraryTab: (tab: LldLibraryTab) => void
   setActivePanel: (panel: ActivePanel) => void
   setLibraryOpen: (open: boolean) => void
   setInspectorOpen: (open: boolean) => void
@@ -110,6 +121,9 @@ interface UiState {
 export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
+      boardMode: 'hld',
+      lldLibraryTab: 'flowchart',
+
       activePanel: 'library',
       libraryOpen: true,
       inspectorOpen: true,
@@ -139,6 +153,14 @@ export const useUiStore = create<UiState>()(
       contextMenu: { visible: false, x: 0, y: 0, type: 'canvas' },
       theme: 'light',
 
+      setBoardMode: (boardMode) =>
+        set({
+          boardMode,
+          activeTool: 'select',
+          searchQuery: '',
+          activeCategory: 'all',
+        }),
+      setLldLibraryTab: (lldLibraryTab) => set({ lldLibraryTab }),
       setActivePanel: (activePanel) => set({ activePanel }),
       setLibraryOpen: (libraryOpen) => set({ libraryOpen }),
       setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
@@ -173,6 +195,8 @@ export const useUiStore = create<UiState>()(
     {
       name: 'archboard-ui-v2',
       partialize: (state: UiState) => ({
+        boardMode: state.boardMode,
+        lldLibraryTab: state.lldLibraryTab,
         recentlyUsed: state.recentlyUsed,
         theme: state.theme,
         libraryOpen: state.libraryOpen,

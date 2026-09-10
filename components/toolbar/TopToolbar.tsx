@@ -13,12 +13,25 @@ import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
 
 export default function TopToolbar() {
-  const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid } = useDiagramStore()
+  const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid, switchBoard, activeBoard } =
+    useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
-  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen } = useUiStore()
+  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode } =
+    useUiStore()
   const reactFlow = useReactFlow()
   const [editingName, setEditingName] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
+
+  const mode = activeBoard ?? boardMode
+
+  const handleModeSwitch = useCallback(
+    (next: 'hld' | 'lld') => {
+      if (next === mode) return
+      switchBoard(next)
+      setBoardMode(next)
+    },
+    [mode, switchBoard, setBoardMode]
+  )
 
   const handleUndo = useCallback(() => {
     const { nodes, edges } = useDiagramStore.getState()
@@ -66,6 +79,40 @@ export default function TopToolbar() {
           <span className="text-slate-800">Arch</span>
           <span className="text-blue-600">Board</span>
         </span>
+      </div>
+
+      <div className="w-px h-5 bg-gray-200" />
+
+      {/* HLD / LLD mode */}
+      <div
+        className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200/80 shrink-0"
+        role="group"
+        aria-label="Diagram mode"
+      >
+        <button
+          type="button"
+          onClick={() => handleModeSwitch('hld')}
+          className={[
+            'px-2.5 py-1 text-xs font-semibold rounded-md transition-colors',
+            mode === 'hld'
+              ? 'bg-white text-slate-900 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700',
+          ].join(' ')}
+        >
+          HLD
+        </button>
+        <button
+          type="button"
+          onClick={() => handleModeSwitch('lld')}
+          className={[
+            'px-2.5 py-1 text-xs font-semibold rounded-md transition-colors',
+            mode === 'lld'
+              ? 'bg-white text-blue-700 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700',
+          ].join(' ')}
+        >
+          LLD
+        </button>
       </div>
 
       <div className="w-px h-5 bg-gray-200" />

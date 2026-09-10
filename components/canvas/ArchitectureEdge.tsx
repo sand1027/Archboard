@@ -7,14 +7,14 @@ import {
   getBezierPath,
   getStraightPath,
   getSmoothStepPath,
+  MarkerType,
   type EdgeProps,
   type Edge,
 } from '@xyflow/react'
-import type { ArchitectureEdgeData } from '@/types/architecture'
+import type { ArchitectureEdgeData, RelationKind } from '@/types/architecture'
 
 type ArchitectureEdgeType = Edge<ArchitectureEdgeData>
 
-// Semantic colours when no explicit stroke is set
 const CONNECTION_STYLES: Record<string, { stroke: string; strokeDasharray?: string; strokeWidth: number }> = {
   synchronous:    { stroke: '#374151', strokeWidth: 1.5 },
   asynchronous:   { stroke: '#7C3AED', strokeDasharray: '6,4', strokeWidth: 1.5 },
@@ -26,18 +26,26 @@ const CONNECTION_STYLES: Record<string, { stroke: string; strokeDasharray?: stri
 }
 
 const PROTOCOL_COLORS: Record<string, string> = {
-  HTTP:      '#374151',
-  HTTPS:     '#059669',
-  TCP:       '#374151',
-  UDP:       '#6B7280',
-  gRPC:      '#7C3AED',
-  WebSocket: '#D97706',
-  SSE:       '#0EA5E9',
-  REST:      '#059669',
-  GraphQL:   '#E10098',
-  Kafka:     '#D97706',
-  AMQP:      '#F43F5E',
-  MQTT:      '#0EA5E9',
+  HTTP: '#374151', HTTPS: '#059669', TCP: '#374151', UDP: '#6B7280',
+  gRPC: '#7C3AED', WebSocket: '#D97706', SSE: '#0EA5E9', REST: '#059669',
+  GraphQL: '#E10098', Kafka: '#D97706', AMQP: '#F43F5E', MQTT: '#0EA5E9',
+}
+
+const RELATION_STYLES: Partial<
+  Record<RelationKind, { strokeDasharray?: string; end?: MarkerType; start?: MarkerType; label?: string }>
+> = {
+  association: { end: MarkerType.ArrowClosed },
+  inheritance: { end: MarkerType.Arrow },
+  realization: { strokeDasharray: '6,4', end: MarkerType.Arrow },
+  dependency: { strokeDasharray: '6,4', end: MarkerType.ArrowClosed },
+  composition: { end: MarkerType.ArrowClosed, start: MarkerType.ArrowClosed },
+  aggregation: { end: MarkerType.ArrowClosed },
+  'one-to-one': { end: MarkerType.ArrowClosed, label: '1:1' },
+  'one-to-many': { end: MarkerType.ArrowClosed, label: '1:N' },
+  'many-to-many': { end: MarkerType.ArrowClosed, label: 'N:M' },
+  'message-sync': { end: MarkerType.ArrowClosed },
+  'message-async': { strokeDasharray: '6,4', end: MarkerType.ArrowClosed },
+  'message-return': { strokeDasharray: '4,3', end: MarkerType.Arrow },
 }
 
 function ArchitectureEdgeComponent({
@@ -49,18 +57,21 @@ function ArchitectureEdgeComponent({
   markerEnd, markerStart,
   style: inlineStyle,
 }: EdgeProps<ArchitectureEdgeType>) {
+  const relationKind = data?.relationKind as RelationKind | undefined
+  const relation = relationKind ? RELATION_STYLES[relationKind] : undefined
 
-  const connType    = data?.connectionType ?? 'synchronous'
-  const semantic    = CONNECTION_STYLES[connType] ?? CONNECTION_STYLES.synchronous
-  const lineStyle   = (data?.edgeLineStyle as string) ?? 'bezier'
+  const connType = data?.connectionType ?? 'synchronous'
+  const semantic = CONNECTION_STYLES[connType] ?? CONNECTION_STYLES.synchronous
+  const lineStyle = (data?.edgeLineStyle as string) ?? (relationKind?.startsWith('message') ? 'straight' : 'bezier')
   const protocolColor = data?.protocol ? PROTOCOL_COLORS[data.protocol as string] ?? '#374151' : '#374151'
 
-  // Inline style (set when edge was drawn with custom style preset) wins over semantic
-  const strokeColor  = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
-  const strokeWidth  = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
-  const strokeDash   = (inlineStyle?.strokeDasharray as string) ?? semantic.strokeDasharray
+  const strokeColor = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
+  const strokeWidth = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
+  const strokeDash =
+    (inlineStyle?.strokeDasharray as string) ??
+    relation?.strokeDasharray ??
+    semantic.strokeDasharray
 
-  // Build path based on line style
   const pathArgs = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
 
   let edgePath: string, labelX: number, labelY: number
@@ -82,7 +93,24 @@ function ArchitectureEdgeComponent({
     strokeDasharray: strokeDash,
   }
 
-  const hasLabel = !!(data?.label || data?.protocol)
+  const displayLabel =
+    data?.label ||
+    data?.protocol ||
+    relation?.label ||
+    (relationKind ? relationKind.replace(/-/g, ' ') : '')
+
+  const hasLabel = !!displayLabel
+
+  const resolvedMarkerEnd =
+    markerEnd ??
+    (relation?.end
+      ? { type: relation.end, width: 16, height: 16, color: strokeColor }
+      : undefined)
+  const resolvedMarkerStart =
+    markerStart ??
+    (relation?.start
+      ? { type: relation.start, width: 14, height: 14, color: strokeColor }
+      : undefined)
 
   return (
     <>
@@ -90,8 +118,8 @@ function ArchitectureEdgeComponent({
         id={id}
         path={edgePath}
         style={edgeStyle}
-        markerEnd={markerEnd}
-        markerStart={markerStart}
+        markerEnd={resolvedMarkerEnd as typeof markerEnd}
+        markerStart={resolvedMarkerStart as typeof markerStart}
       />
 
       {hasLabel && (
@@ -110,7 +138,7 @@ function ArchitectureEdgeComponent({
                 'bg-white border shadow-sm whitespace-nowrap',
                 selected ? 'border-blue-400' : 'border-gray-200',
               ].join(' ')}
-              style={{ color: protocolColor }}
+              style={{ color: data?.protocol ? protocolColor : '#475569' }}
             >
               {data?.protocol && (
                 <span className="font-semibold">{data.protocol as string}</span>
@@ -118,8 +146,10 @@ function ArchitectureEdgeComponent({
               {data?.label && data?.protocol && (
                 <span className="text-gray-300">·</span>
               )}
-              {data?.label && (
-                <span className="text-gray-600">{data.label as string}</span>
+              {(data?.label || (!data?.protocol && displayLabel)) && (
+                <span className="text-gray-600 capitalize">
+                  {(data?.label as string) || displayLabel}
+                </span>
               )}
             </div>
           </div>

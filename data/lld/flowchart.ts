@@ -1,0 +1,68 @@
+import type { LldCatalogItem } from '@/types/lld'
+
+export const flowchartItems: LldCatalogItem[] = [
+  {
+    id: 'fc-process',
+    name: 'Process',
+    description: 'Step or action in a flow',
+    tab: 'flowchart',
+    tags: ['process', 'step', 'action'],
+    spawn: { kind: 'shape', shapeType: 'rectangle', defaultLabel: 'Process', w: 160, h: 80 },
+  },
+  {
+    id: 'fc-decision',
+    name: 'Decision',
+    description: 'Yes/No branch',
+    tab: 'flowchart',
+    tags: ['decision', 'if', 'branch'],
+    spawn: { kind: 'shape', shapeType: 'diamond', defaultLabel: 'Decision?', w: 140, h: 100 },
+  },
+  {
+    id: 'fc-terminator',
+    name: 'Start / End',
+    description: 'Flow terminator',
+    tab: 'flowchart',
+    tags: ['start', 'end', 'terminator'],
+    spawn: { kind: 'shape', shapeType: 'terminator', defaultLabel: 'Start', w: 140, h: 56 },
+  },
+  {
+    id: 'fc-data',
+    name: 'Data',
+    description: 'Input / output',
+    tab: 'flowchart',
+    tags: ['data', 'io', 'input', 'output'],
+    spawn: { kind: 'shape', shapeType: 'parallelogram', defaultLabel: 'Input', w: 160, h: 70 },
+  },
+  {
+    id: 'fc-document',
+    name: 'Document',
+    description: 'Document or report',
+    tab: 'flowchart',
+    tags: ['document', 'report'],
+    spawn: { kind: 'shape', shapeType: 'document', defaultLabel: 'Document', w: 150, h: 100 },
+  },
+  {
+    id: 'fc-preparation',
+    name: 'Preparation',
+    description: 'Setup or init step',
+    tab: 'flowchart',
+    tags: ['prep', 'init'],
+    spawn: { kind: 'shape', shapeType: 'preparation', defaultLabel: 'Prepare', w: 150, h: 80 },
+  },
+  {
+    id: 'fc-connector',
+    name: 'Connector',
+    description: 'On-page connector',
+    tab: 'flowchart',
+    tags: ['connector', 'link'],
+    spawn: { kind: 'shape', shapeType: 'connector', defaultLabel: 'A', w: 48, h: 48 },
+  },
+  {
+    id: 'fc-note',
+    name: 'Note',
+    description: 'Annotation sticky',
+    tab: 'flowchart',
+    tags: ['note', 'comment'],
+    spawn: { kind: 'note', label: 'Note' },
+  },
+]

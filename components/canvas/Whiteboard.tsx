@@ -31,13 +31,23 @@ import ArchitectureNodeComponent from './ArchitectureNode'
 import ArchitectureEdgeComponent from './ArchitectureEdge'
 import FrameNodeComponent from './FrameNode'
 import ShapeNodeComponent from './ShapeNode'
+import UmlClassNodeComponent from './UmlClassNode'
+import UmlEntityNodeComponent from './UmlEntityNode'
+import UmlLifelineNodeComponent from './UmlLifelineNode'
+import IconNodeComponent from './IconNode'
 import ShapesToolbar from './ShapesToolbar'
 import ContextMenuComponent from '../ui/ContextMenu'
+import { findLldItem } from '@/data/lld'
+import { spawnLldNode } from '@/lib/spawnLldNode'
 
 const nodeTypes: NodeTypes = {
   architecture: ArchitectureNodeComponent,
   frame: FrameNodeComponent,
   shape: ShapeNodeComponent,
+  umlClass: UmlClassNodeComponent,
+  umlEntity: UmlEntityNodeComponent,
+  umlLifeline: UmlLifelineNodeComponent,
+  icon: IconNodeComponent,
 }
 
 const edgeTypes: EdgeTypes = {
@@ -66,6 +76,11 @@ const SHAPE_DEFAULTS: Record<string, { w: number; h: number }> = {
   line:          { w: 160, h: 40  },
   text:          { w: 160, h: 60  },
   frame:         { w: 300, h: 220 },
+  terminator:    { w: 140, h: 56  },
+  document:      { w: 150, h: 110 },
+  preparation:   { w: 150, h: 90  },
+  connector:     { w: 48,  h: 48  },
+  note:          { w: 140, h: 100 },
 }
 
 /** Padding so freehand stroke + arrowhead stay inside the node box */
@@ -137,13 +152,16 @@ export default function Whiteboard() {
     addNode, setSelectedNodeIds, setSelectedEdgeIds,
     snapToGrid, gridSize, showGrid,
     setViewport,
+    activeBoard,
   } = useDiagramStore()
 
   const { pushSnapshot } = useHistoryStore()
   const {
     setContextMenu, hideContextMenu, contextMenu,
-    activeTool, setActiveTool,
+    activeTool, setActiveTool, setTemplateModalOpen,
   } = useUiStore()
+
+  const isLld = activeBoard === 'lld'
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const drawSession = useRef<DrawSession | null>(null)
@@ -263,6 +281,20 @@ export default function Whiteboard() {
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
+
+      const lldId = e.dataTransfer.getData('application/archboard-lld')
+      if (lldId) {
+        const item = findLldItem(lldId)
+        if (!item) return
+        const position = reactFlowInstance.screenToFlowPosition({
+          x: e.clientX,
+          y: e.clientY,
+        })
+        snapshotBeforeChange()
+        addNode(spawnLldNode(item, position))
+        return
+      }
+
       const componentId = e.dataTransfer.getData('application/archboard-component')
       if (!componentId) return
       const component = componentRegistry.find((c) => c.id === componentId)
@@ -348,8 +380,11 @@ export default function Whiteboard() {
         style: { width: w, height: h },
         width: w,
         height: h,
-        // Shapes are freehand — not part of the connection handle system
-        connectable: false,
+        // Flowchart shapes can connect in LLD; freehand strokes stay non-connectable
+        connectable:
+          useDiagramStore.getState().activeBoard === 'lld' &&
+          !isLinearTool(tool) &&
+          tool !== 'text',
         // Keep grouping shapes under architecture icons
         zIndex: isLinearTool(tool) || tool === 'text' ? 5 : 0,
       }
@@ -666,7 +701,9 @@ export default function Whiteboard() {
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{
           type: 'architecture',
-          data: { connectionType: 'synchronous', protocol: 'HTTPS' },
+          data: isLld
+            ? { relationKind: 'association', label: '' }
+            : { connectionType: 'synchronous', protocol: 'HTTPS' },
           markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
           animated: false,
         }}
@@ -679,7 +716,7 @@ export default function Whiteboard() {
         panOnDrag={activeTool === 'hand' || activeTool === 'select'}
         selectionOnDrag={activeTool === 'select'}
         nodesDraggable={activeTool === 'select'}
-        nodesConnectable={false}
+        nodesConnectable={isLld && activeTool === 'select'}
         elementsSelectable={activeTool === 'select' || activeTool === 'hand'}
         elevateNodesOnSelect={false}
         fitView={false}
@@ -697,9 +734,34 @@ export default function Whiteboard() {
           />
         )}
 
+        {nodes.length === 0 && (
+          <Panel position="top-center" className="!mt-16 pointer-events-auto">
+            <div className="rounded-2xl border border-slate-200 bg-white/95 px-6 py-5 shadow-lg shadow-slate-200/50 text-center max-w-sm">
+              <p className="text-sm font-semibold text-slate-800">
+                {isLld ? 'Start your low-level design' : 'Start your architecture'}
+              </p>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                {isLld
+                  ? 'Drag flowchart, UML, ER, sequence, or icon items from the library — or draw with the toolbar.'
+                  : 'Drag cloud components from the library, or sketch with shapes.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => setTemplateModalOpen(true)}
+                className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-700"
+              >
+                Browse templates
+              </button>
+            </div>
+          </Panel>
+        )}
+
         <MiniMap
           nodeColor={(node) => {
             if (node.type === 'frame') return '#E5E7EB'
+            if (node.type === 'umlClass' || node.type === 'umlEntity') return '#DBEAFE'
+            if (node.type === 'umlLifeline') return '#E0E7FF'
+            if (node.type === 'icon') return '#F1F5F9'
             if (node.type === 'shape') {
               const d = node.data as ShapeNodeData
               return (d.stroke as string) ?? '#6366F1'

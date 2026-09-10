@@ -7,11 +7,21 @@ import type {
   Viewport,
   DiagramMetadata,
 } from './architecture'
+import type {
+  UmlClassNodeData,
+  UmlEntityNodeData,
+  UmlLifelineNodeData,
+  IconNodeData,
+} from './lld'
 
 export type ArchitectureNode =
   | Node<ArchitectureNodeData, 'architecture'>
   | Node<FrameNodeData, 'frame'>
   | Node<ShapeNodeData, 'shape'>
+  | Node<UmlClassNodeData, 'umlClass'>
+  | Node<UmlEntityNodeData, 'umlEntity'>
+  | Node<UmlLifelineNodeData, 'umlLifeline'>
+  | Node<IconNodeData, 'icon'>
 
 export type ArchitectureEdge = Edge<ArchitectureEdgeData>
 
@@ -28,4 +38,14 @@ export interface Diagram {
 export interface DiagramSnapshot {
   nodes: ArchitectureNode[]
   edges: ArchitectureEdge[]
+}
+
+export type BoardMode = 'hld' | 'lld'
+
+export interface BoardSnapshot {
+  diagramId: string
+  diagramName: string
+  nodes: ArchitectureNode[]
+  edges: ArchitectureEdge[]
+  viewport: Viewport
 }

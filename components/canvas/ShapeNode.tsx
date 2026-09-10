@@ -1,7 +1,7 @@
 'use client'
 
 import { memo, useState, useRef, useCallback, useEffect, type CSSProperties } from 'react'
-import { NodeResizer, useReactFlow, type NodeProps } from '@xyflow/react'
+import { NodeResizer, useReactFlow, Handle, Position, type NodeProps } from '@xyflow/react'
 import type { Node } from '@xyflow/react'
 import type { ShapeNodeData, ShapePoint } from '@/types/architecture'
 import { useDiagramStore } from '@/store/diagramStore'
@@ -265,6 +265,81 @@ function ClosedShapeSVG({
         )
       })()}
       {shapeType === 'star' && <polygon points={starPoints(w, h, pad)} {...shared} />}
+      {shapeType === 'terminator' && (
+        <rect
+          x={pad}
+          y={pad}
+          width={iw}
+          height={ih}
+          rx={Math.min(ih / 2, iw / 2)}
+          ry={Math.min(ih / 2, iw / 2)}
+          {...shared}
+        />
+      )}
+      {shapeType === 'document' && (() => {
+        const wave = Math.min(14, ih * 0.18)
+        return (
+          <path
+            d={`
+              M ${pad} ${pad}
+              L ${w - pad} ${pad}
+              L ${w - pad} ${h - pad - wave}
+              Q ${w * 0.75} ${h - pad + wave * 0.6} ${w / 2} ${h - pad - wave * 0.2}
+              Q ${w * 0.25} ${h - pad - wave} ${pad} ${h - pad - wave * 0.15}
+              Z
+            `}
+            {...shared}
+          />
+        )
+      })()}
+      {shapeType === 'preparation' && (() => {
+        const insetX = Math.min(iw * 0.18, 28)
+        return (
+          <polygon
+            points={[
+              `${pad + insetX},${pad}`,
+              `${w - pad - insetX},${pad}`,
+              `${w - pad},${h / 2}`,
+              `${w - pad - insetX},${h - pad}`,
+              `${pad + insetX},${h - pad}`,
+              `${pad},${h / 2}`,
+            ].join(' ')}
+            {...shared}
+          />
+        )
+      })()}
+      {shapeType === 'connector' && (
+        <ellipse cx={w / 2} cy={h / 2} rx={Math.min(iw, ih) / 2} ry={Math.min(iw, ih) / 2} {...shared} />
+      )}
+      {shapeType === 'note' && (() => {
+        const fold = Math.min(18, Math.min(iw, ih) * 0.22)
+        return (
+          <>
+            <path
+              d={`
+                M ${pad} ${pad}
+                L ${w - pad - fold} ${pad}
+                L ${w - pad} ${pad + fold}
+                L ${w - pad} ${h - pad}
+                L ${pad} ${h - pad}
+                Z
+              `}
+              {...shared}
+            />
+            <path
+              d={`
+                M ${w - pad - fold} ${pad}
+                L ${w - pad - fold} ${pad + fold}
+                L ${w - pad} ${pad + fold}
+              `}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={sw}
+              strokeLinejoin="round"
+            />
+          </>
+        )
+      })()}
     </svg>
   )
 }
@@ -423,6 +498,15 @@ function ShapeNode({
           lineClassName="!border-transparent"
           handleClassName="!bg-white !border-2 !border-blue-500 !rounded-full !w-2.5 !h-2.5 !shadow-sm"
         />
+      )}
+
+      {!linear && !isText && (
+        <>
+          <Handle type="target" position={Position.Top} className="!w-1.5 !h-1.5 !bg-slate-400 !border-white !opacity-0 group-hover:!opacity-100" />
+          <Handle type="source" position={Position.Bottom} className="!w-1.5 !h-1.5 !bg-slate-400 !border-white !opacity-0 group-hover:!opacity-100" />
+          <Handle type="target" position={Position.Left} id="left" className="!w-1.5 !h-1.5 !bg-slate-400 !border-white !opacity-0 group-hover:!opacity-100" />
+          <Handle type="source" position={Position.Right} id="right" className="!w-1.5 !h-1.5 !bg-slate-400 !border-white !opacity-0 group-hover:!opacity-100" />
+        </>
       )}
 
       {linear && (
