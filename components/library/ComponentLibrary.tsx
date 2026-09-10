@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useCallback } from 'react'
-import { Search, ChevronRight, Clock, Package } from 'lucide-react'
+import { Search, Clock, Package } from 'lucide-react'
 import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
 import {
@@ -40,22 +40,24 @@ function generateId(): string {
 }
 
 export default function ComponentLibrary() {
-  const { searchQuery, setSearchQuery, activeCategory, setActiveCategory, recentlyUsed, addRecentlyUsed } = useUiStore()
+  const {
+    searchQuery,
+    setSearchQuery,
+    activeCategory,
+    setActiveCategory,
+    recentlyUsed,
+    addRecentlyUsed,
+  } = useUiStore()
   const { addNode, nodes } = useDiagramStore()
 
   const filteredComponents = useMemo(() => {
-    if (searchQuery.trim()) {
-      return searchComponents(searchQuery)
-    }
-    if (activeCategory === 'all') {
-      return componentRegistry
-    }
+    if (searchQuery.trim()) return searchComponents(searchQuery)
+    if (activeCategory === 'all') return componentRegistry
     if (activeCategory === 'recent') {
       return recentlyUsed
         .map((id) => componentRegistry.find((c) => c.id === id))
         .filter(Boolean) as ArchitectureComponent[]
     }
-    // Check if it's a provider
     if (['aws', 'gcp', 'azure', 'kubernetes', 'generic'].includes(activeCategory)) {
       return getComponentsByProvider(activeCategory as Provider)
     }
@@ -64,12 +66,16 @@ export default function ComponentLibrary() {
 
   const addToCanvas = useCallback(
     (component: ArchitectureComponent) => {
-      // Find a good position (avoid stacking on existing nodes)
       const offset = nodes.length * 20
       const node: ArchitectureNode = {
         id: generateId(),
         type: 'architecture',
         position: { x: 300 + (offset % 200), y: 200 + (offset % 200) },
+        width: 72,
+        height: 88,
+        style: { width: 72, height: 88 },
+        connectable: false,
+        zIndex: 10,
         data: {
           componentId: component.id,
           label: component.name,
@@ -86,89 +92,87 @@ export default function ComponentLibrary() {
   )
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 border-r border-gray-200">
-      {/* Search */}
-      <div className="p-3 border-b border-gray-200 bg-white">
+    <div className="flex flex-col h-full bg-slate-50/80">
+      {/* Header + search */}
+      <div className="px-3 pt-3 pb-2.5 border-b border-slate-200/80 bg-white">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2 px-0.5">
+          Components
+        </p>
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
           <input
             type="text"
-            placeholder="Search components…"
+            placeholder="Search…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg
-              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-              placeholder-gray-400 text-gray-800"
+            className="w-full pl-8 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl
+              focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300
+              placeholder-slate-400 text-slate-800"
           />
         </div>
       </div>
 
-      {/* Category nav */}
+      {/* Filters */}
       {!searchQuery && (
-        <div className="border-b border-gray-200 bg-white">
-          {/* Recently used */}
+        <div className="border-b border-slate-200/80 bg-white px-3 py-2.5 space-y-3 shrink-0 max-h-[42%] overflow-y-auto">
           {recentlyUsed.length > 0 && (
             <button
               onClick={() => setActiveCategory('recent')}
               className={[
-                'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors',
+                'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors',
                 activeCategory === 'recent'
-                  ? 'bg-blue-50 text-blue-700 font-medium'
-                  : 'text-gray-600 hover:bg-gray-50',
+                  ? 'bg-slate-900 text-white font-medium'
+                  : 'text-slate-600 hover:bg-slate-100',
               ].join(' ')}
             >
-              <Clock className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>Recently Used</span>
+              <Clock className="w-3.5 h-3.5 flex-shrink-0 opacity-70" />
+              <span>Recently used</span>
             </button>
           )}
 
-          {/* Provider groups */}
-          <div className="px-3 pt-2 pb-1">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-              Cloud Providers
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">
+              Providers
             </p>
-            <div className="flex flex-wrap gap-1 mb-2">
-              {PROVIDERS.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => setActiveCategory(p.id)}
-                  className={[
-                    'flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors',
-                    activeCategory === p.id
-                      ? 'text-white'
-                      : 'text-gray-600 bg-gray-100 hover:bg-gray-200',
-                  ].join(' ')}
-                  style={
-                    activeCategory === p.id
-                      ? { backgroundColor: p.color }
-                      : {}
-                  }
-                >
-                  {p.label}
-                </button>
-              ))}
+            <div className="flex flex-wrap gap-1">
+              {PROVIDERS.map((p) => {
+                const active = activeCategory === p.id
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setActiveCategory(p.id)}
+                    className={[
+                      'px-2 py-1 rounded-md text-[11px] font-medium transition-all border',
+                      active
+                        ? 'text-white border-transparent shadow-sm'
+                        : 'text-slate-600 bg-slate-50 border-slate-200 hover:border-slate-300',
+                    ].join(' ')}
+                    style={active ? { backgroundColor: p.color } : undefined}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
             </div>
+          </div>
 
-            {/* Generic categories */}
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-              Generic
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">
+              Categories
             </p>
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-0.5">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat.id}
                   onClick={() => setActiveCategory(cat.id)}
                   className={[
-                    'flex items-center justify-between px-2 py-1.5 rounded text-xs text-left transition-colors',
+                    'flex items-center px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors',
                     activeCategory === cat.id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-50',
+                      ? 'bg-slate-900 text-white font-medium'
+                      : 'text-slate-600 hover:bg-slate-100',
                   ].join(' ')}
                 >
-                  <span>{cat.label}</span>
-                  {activeCategory === cat.id && (
-                    <ChevronRight className="w-3 h-3" />
-                  )}
+                  {cat.label}
                 </button>
               ))}
             </div>
@@ -176,27 +180,26 @@ export default function ComponentLibrary() {
         </div>
       )}
 
-      {/* Component list */}
-      <div className="flex-1 overflow-y-auto p-2">
+      {/* Grid */}
+      <div className="flex-1 overflow-y-auto p-2.5">
         {searchQuery && (
-          <p className="text-xs text-gray-400 px-1 mb-2">
-            {filteredComponents.length} result{filteredComponents.length !== 1 ? 's' : ''} for &quot;{searchQuery}&quot;
+          <p className="text-[11px] text-slate-400 px-1 mb-2">
+            {filteredComponents.length} result{filteredComponents.length !== 1 ? 's' : ''}
           </p>
         )}
 
         {filteredComponents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Package className="w-8 h-8 text-gray-300 mb-2" />
-            <p className="text-sm text-gray-400">No components found</p>
+          <div className="flex flex-col items-center justify-center py-14 text-center px-4">
+            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2.5">
+              <Package className="w-4 h-4 text-slate-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-500">No components</p>
+            <p className="text-xs text-slate-400 mt-0.5">Try another search or category</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             {filteredComponents.map((comp) => (
-              <ComponentItem
-                key={comp.id}
-                component={comp}
-                onAdd={addToCanvas}
-              />
+              <ComponentItem key={comp.id} component={comp} onAdd={addToCanvas} />
             ))}
           </div>
         )}

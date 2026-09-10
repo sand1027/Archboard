@@ -17,6 +17,20 @@ html, body, #__next {
 /* React Flow base styles override */
 .react-flow__node {
   cursor: default;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.react-flow__node-architecture,
+.react-flow__node-shape {
+  background: transparent !important;
+}
+
+/* Hide any leftover connection handle chrome on architecture icons */
+.react-flow__node-architecture .react-flow__handle {
+  display: none !important;
 }
 
 .react-flow__node.selected > div {
@@ -45,13 +59,37 @@ html, body, #__next {
   background: #9CA3AF;
 }
 
-/* Prevent text selection during drag */
+/* Selection resize handles — circular, clean */
+.react-flow__resize-control.handle {
+  border-radius: 9999px !important;
+}
+
+.react-flow__selection {
+  background: rgba(59, 130, 246, 0.06) !important;
+  border: 1px solid rgba(59, 130, 246, 0.45) !important;
+}
+
+/* Drawing cursor affordance */
 .react-flow__pane {
   user-select: none;
 }
 
-/* Mini map styling */
-.react-flow__minimap {
-  bottom: 52px !important;
-  right: 12px !important;
+/* Shared inspector / library form controls */
+.field-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #1e293b;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  outline: none;
+}
+.field-input:focus {
+  border-color: #cbd5e1;
+  box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.06);
+}
+.field-input::placeholder {
+  color: #94a3b8;
 }

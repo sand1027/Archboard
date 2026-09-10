@@ -5,6 +5,8 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
+  getStraightPath,
+  getSmoothStepPath,
   type EdgeProps,
   type Edge,
 } from '@xyflow/react'
@@ -12,6 +14,7 @@ import type { ArchitectureEdgeData } from '@/types/architecture'
 
 type ArchitectureEdgeType = Edge<ArchitectureEdgeData>
 
+// Semantic colours when no explicit stroke is set
 const CONNECTION_STYLES: Record<string, { stroke: string; strokeDasharray?: string; strokeWidth: number }> = {
   synchronous:    { stroke: '#374151', strokeWidth: 1.5 },
   asynchronous:   { stroke: '#7C3AED', strokeDasharray: '6,4', strokeWidth: 1.5 },
@@ -39,33 +42,44 @@ const PROTOCOL_COLORS: Record<string, string> = {
 
 function ArchitectureEdgeComponent({
   id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  data,
-  selected,
-  markerEnd,
+  sourceX, sourceY,
+  targetX, targetY,
+  sourcePosition, targetPosition,
+  data, selected,
+  markerEnd, markerStart,
+  style: inlineStyle,
 }: EdgeProps<ArchitectureEdgeType>) {
-  const connType = data?.connectionType ?? 'synchronous'
-  const style = CONNECTION_STYLES[connType] ?? CONNECTION_STYLES.synchronous
-  const protocolColor = data?.protocol ? PROTOCOL_COLORS[data.protocol] ?? '#374151' : '#374151'
 
-  const [edgePath, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  })
+  const connType    = data?.connectionType ?? 'synchronous'
+  const semantic    = CONNECTION_STYLES[connType] ?? CONNECTION_STYLES.synchronous
+  const lineStyle   = (data?.edgeLineStyle as string) ?? 'bezier'
+  const protocolColor = data?.protocol ? PROTOCOL_COLORS[data.protocol as string] ?? '#374151' : '#374151'
+
+  // Inline style (set when edge was drawn with custom style preset) wins over semantic
+  const strokeColor  = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
+  const strokeWidth  = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
+  const strokeDash   = (inlineStyle?.strokeDasharray as string) ?? semantic.strokeDasharray
+
+  // Build path based on line style
+  const pathArgs = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
+
+  let edgePath: string, labelX: number, labelY: number
+
+  if (lineStyle === 'straight') {
+    ;[edgePath, labelX, labelY] = getStraightPath(pathArgs)
+  } else if (lineStyle === 'step' || lineStyle === 'smoothstep') {
+    ;[edgePath, labelX, labelY] = getSmoothStepPath({
+      ...pathArgs,
+      borderRadius: lineStyle === 'smoothstep' ? 12 : 0,
+    })
+  } else {
+    ;[edgePath, labelX, labelY] = getBezierPath(pathArgs)
+  }
 
   const edgeStyle = {
-    stroke: selected ? '#3B82F6' : style.stroke,
-    strokeWidth: selected ? style.strokeWidth + 0.5 : style.strokeWidth,
-    strokeDasharray: style.strokeDasharray,
+    stroke: strokeColor,
+    strokeWidth,
+    strokeDasharray: strokeDash,
   }
 
   const hasLabel = !!(data?.label || data?.protocol)
@@ -77,7 +91,9 @@ function ArchitectureEdgeComponent({
         path={edgePath}
         style={edgeStyle}
         markerEnd={markerEnd}
+        markerStart={markerStart}
       />
+
       {hasLabel && (
         <EdgeLabelRenderer>
           <div
@@ -91,19 +107,19 @@ function ArchitectureEdgeComponent({
             <div
               className={[
                 'flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium',
-                'bg-white border shadow-sm',
+                'bg-white border shadow-sm whitespace-nowrap',
                 selected ? 'border-blue-400' : 'border-gray-200',
               ].join(' ')}
               style={{ color: protocolColor }}
             >
               {data?.protocol && (
-                <span className="font-semibold">{data.protocol}</span>
+                <span className="font-semibold">{data.protocol as string}</span>
               )}
-              {data?.label && data.protocol && (
+              {data?.label && data?.protocol && (
                 <span className="text-gray-300">·</span>
               )}
               {data?.label && (
-                <span className="text-gray-600">{data.label}</span>
+                <span className="text-gray-600">{data.label as string}</span>
               )}
             </div>
           </div>

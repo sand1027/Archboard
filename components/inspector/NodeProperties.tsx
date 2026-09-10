@@ -44,10 +44,10 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
   }, [node.id, duplicateNodes, pushSnapshot])
 
   return (
-    <div className="divide-y divide-gray-100">
+    <div className="divide-y divide-slate-100">
       {/* Node header */}
       <div className="p-4 flex items-start gap-3">
-        <div className="relative w-10 h-10 flex-shrink-0 bg-gray-50 rounded-lg p-1">
+        <div className="relative w-10 h-10 flex-shrink-0 bg-slate-50 rounded-xl border border-slate-100 p-1.5 flex items-center justify-center">
           <Image
             src={node.data.icon}
             alt={node.data.label}
@@ -58,37 +58,39 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
           />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-0.5">
-            {node.data.provider ? `${node.data.provider} · ` : ''}{node.data.category}
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+            {node.data.provider ? `${node.data.provider} · ` : ''}
+            {node.data.category}
           </p>
-          <p className="text-sm font-semibold text-gray-900 truncate">{node.data.label}</p>
+          <p className="text-sm font-semibold text-slate-900 truncate">{node.data.label}</p>
         </div>
       </div>
 
       {/* Label editor */}
       <div className="p-4 space-y-4">
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Label</label>
+          <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+            Label
+          </label>
           <input
             type="text"
             value={node.data.label}
             onChange={(e) => handleLabelChange(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
-              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-              text-gray-800"
+            className="field-input"
           />
         </div>
 
         {node.data.subtitle !== undefined && (
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Subtitle</label>
+            <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+              Subtitle
+            </label>
             <input
               type="text"
               value={node.data.subtitle ?? ''}
               onChange={(e) => updateNode(node.id, { subtitle: e.target.value } as any)}
               placeholder="Optional subtitle"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
+              className="field-input"
             />
           </div>
         )}
@@ -96,7 +98,9 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
 
       {/* Component info */}
       <div className="p-4 space-y-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Component</p>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+          Component
+        </p>
 
         <InfoRow label="Name" value={component?.name ?? node.data.componentId} />
         <InfoRow label="Category" value={node.data.category} capitalize />
@@ -105,14 +109,14 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
         )}
         {component?.description && (
           <div>
-            <p className="text-xs text-gray-400 mb-0.5">Description</p>
-            <p className="text-xs text-gray-600 leading-relaxed">{component.description}</p>
+            <p className="text-xs text-slate-400 mb-0.5">Description</p>
+            <p className="text-xs text-slate-600 leading-relaxed">{component.description}</p>
           </div>
         )}
 
         <div className="flex items-center gap-2 pt-1">
-          <Link className="w-3.5 h-3.5 text-gray-400" />
-          <span className="text-xs text-gray-500">
+          <Link className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-xs text-slate-500">
             {connectionCount} connection{connectionCount !== 1 ? 's' : ''}
           </span>
         </div>
@@ -120,24 +124,26 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
 
       {/* Position info */}
       <div className="p-4 space-y-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Position</p>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+          Position
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">X</label>
+            <label className="block text-xs text-slate-400 mb-1">X</label>
             <input
               type="number"
               value={Math.round(node.position.x)}
               readOnly
-              className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg text-gray-600"
+              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-600"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Y</label>
+            <label className="block text-xs text-slate-400 mb-1">Y</label>
             <input
               type="number"
               value={Math.round(node.position.y)}
               readOnly
-              className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg text-gray-600"
+              className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-600"
             />
           </div>
         </div>
@@ -145,17 +151,19 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
 
       {/* Actions */}
       <div className="p-4 space-y-2">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Actions</p>
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+          Actions
+        </p>
         <button
           onClick={handleDuplicate}
-          className="w-full flex items-center gap-2 py-2 px-3 text-sm text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition-colors"
+          className="w-full flex items-center gap-2 py-2 px-3 text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors"
         >
           <Copy className="w-4 h-4" />
           Duplicate
         </button>
         <button
           onClick={handleDelete}
-          className="w-full flex items-center gap-2 py-2 px-3 text-sm text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
+          className="w-full flex items-center gap-2 py-2 px-3 text-sm text-red-600 bg-red-50 hover:bg-red-100/80 border border-red-200 rounded-xl transition-colors"
         >
           <Trash2 className="w-4 h-4" />
           Delete
@@ -165,11 +173,21 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
   )
 }
 
-function InfoRow({ label, value, capitalize }: { label: string; value: string; capitalize?: boolean }) {
+function InfoRow({
+  label,
+  value,
+  capitalize,
+}: {
+  label: string
+  value: string
+  capitalize?: boolean
+}) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-gray-400">{label}</span>
-      <span className={`text-xs font-medium text-gray-700 ${capitalize ? 'capitalize' : ''}`}>
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs text-slate-400">{label}</span>
+      <span
+        className={`text-xs font-medium text-slate-700 truncate ${capitalize ? 'capitalize' : ''}`}
+      >
         {value}
       </span>
     </div>
