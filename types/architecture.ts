@@ -87,6 +87,7 @@ export interface ArchitectureEdgeData extends Record<string, unknown> {
   connectionType?: ConnectionType
   label?: string
   animated?: boolean
+  edgeLineStyle?: EdgeLineStyle
   metadata?: Record<string, unknown>
 }
 
@@ -98,6 +99,69 @@ export interface FrameNodeData extends Record<string, unknown> {
   width?: number
   height?: number
 }
+
+// ─── Shape system ─────────────────────────────────────────────────────────────
+
+export type ShapeType =
+  | 'rectangle'
+  | 'ellipse'
+  | 'diamond'
+  | 'triangle'
+  | 'parallelogram'
+  | 'cylinder'
+  | 'hexagon'
+  | 'star'
+  | 'arrow'   // freehand stroke with arrowhead (start → end)
+  | 'line'    // freehand stroke (start → end)
+  | 'text'
+
+export type StrokeStyle = 'solid' | 'dashed' | 'dotted'
+export type ArrowHeadType = 'none' | 'arrow' | 'arrowclosed' | 'diamond' | 'circle'
+export type FontWeight = 'normal' | 'semibold' | 'bold'
+export type TextAlign = 'left' | 'center' | 'right'
+
+export interface ShapePoint {
+  x: number
+  y: number
+}
+
+export interface ShapeNodeData extends Record<string, unknown> {
+  shapeType: ShapeType
+  label?: string
+  fill?: string
+  fillOpacity?: number      // 0–1
+  stroke?: string
+  strokeWidth?: number
+  strokeStyle?: StrokeStyle
+  opacity?: number          // 0–100
+  cornerRadius?: number
+  fontSize?: number
+  fontWeight?: FontWeight
+  textAlign?: TextAlign
+  textColor?: string
+  /** Node-local position where text sits (set by double-click) */
+  textX?: number
+  textY?: number
+  /** Node-local endpoints for freehand line / arrow */
+  start?: ShapePoint
+  end?: ShapePoint
+}
+
+// ─── Edge style ───────────────────────────────────────────────────────────────
+
+export type EdgeLineStyle = 'bezier' | 'straight' | 'step' | 'smoothstep'
+
+export interface EdgeStylePreset {
+  strokeColor: string
+  strokeWidth: number
+  strokeStyle: StrokeStyle
+  lineStyle: EdgeLineStyle
+  startArrow: ArrowHeadType
+  endArrow: ArrowHeadType
+  animated: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export interface Viewport {
   x: number

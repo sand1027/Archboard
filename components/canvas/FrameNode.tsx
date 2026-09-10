@@ -33,13 +33,15 @@ function FrameNode({ data, selected }: NodeProps<FrameNodeType>) {
         border: `2px dashed ${selected ? '#3B82F6' : frameStyle.border}`,
       }}
     >
-      <NodeResizer
-        minWidth={150}
-        minHeight={100}
-        isVisible={selected}
-        lineClassName="border-blue-400"
-        handleClassName="bg-white border-2 border-blue-400 rounded-sm"
-      />
+      {selected && (
+        <NodeResizer
+          minWidth={150}
+          minHeight={100}
+          isVisible={true}
+          lineClassName="border-blue-400"
+          handleClassName="bg-white border-2 border-blue-400 rounded-sm"
+        />
+      )}
 
       {/* Frame label */}
       <div

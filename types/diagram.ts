@@ -3,6 +3,7 @@ import type {
   ArchitectureNodeData,
   ArchitectureEdgeData,
   FrameNodeData,
+  ShapeNodeData,
   Viewport,
   DiagramMetadata,
 } from './architecture'
@@ -10,6 +11,7 @@ import type {
 export type ArchitectureNode =
   | Node<ArchitectureNodeData, 'architecture'>
   | Node<FrameNodeData, 'frame'>
+  | Node<ShapeNodeData, 'shape'>
 
 export type ArchitectureEdge = Edge<ArchitectureEdgeData>
 

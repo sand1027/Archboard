@@ -15,7 +15,7 @@ function AppInner() {
   const { libraryOpen, inspectorOpen } = useUiStore()
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-white">
+    <div className="flex flex-col h-screen overflow-hidden bg-slate-100/40">
       {/* Top toolbar — needs ReactFlow context for zoom/fit */}
       <TopToolbar />
 
@@ -23,11 +23,11 @@ function AppInner() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Component Library */}
         <aside
-          className="flex-shrink-0 overflow-hidden transition-all duration-200 border-r border-gray-200"
-          style={{ width: libraryOpen ? 220 : 0 }}
+          className="flex-shrink-0 overflow-hidden transition-all duration-200 border-r border-slate-200/80 bg-white"
+          style={{ width: libraryOpen ? 240 : 0 }}
         >
           {libraryOpen && (
-            <div className="w-[220px] h-full overflow-hidden">
+            <div className="w-[240px] h-full overflow-hidden">
               <ComponentLibrary />
             </div>
           )}
@@ -40,11 +40,11 @@ function AppInner() {
 
         {/* Right: Properties Inspector */}
         <aside
-          className="flex-shrink-0 overflow-hidden transition-all duration-200 border-l border-gray-200"
-          style={{ width: inspectorOpen ? 240 : 0 }}
+          className="flex-shrink-0 overflow-hidden transition-all duration-200 border-l border-slate-200/80 bg-white"
+          style={{ width: inspectorOpen ? 260 : 0 }}
         >
           {inspectorOpen && (
-            <div className="w-[240px] h-full overflow-hidden">
+            <div className="w-[260px] h-full overflow-hidden">
               <PropertiesPanel />
             </div>
           )}

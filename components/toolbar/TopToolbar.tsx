@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useCallback, useRef, useState } from 'react'
 import {
   Undo2, Redo2, Download, Share2, Settings2,
@@ -52,11 +53,19 @@ export default function TopToolbar() {
   return (
     <header className="flex items-center gap-2 px-4 h-12 bg-white border-b border-gray-200 shrink-0 z-10">
       {/* Logo */}
-      <div className="flex items-center gap-2 mr-2">
-        <div className="w-7 h-7 bg-gray-900 rounded-lg flex items-center justify-center">
-          <span className="text-white text-xs font-bold">A</span>
-        </div>
-        <span className="text-sm font-semibold text-gray-900 hidden sm:block">ArchBoard</span>
+      <div className="flex items-center gap-2 mr-1 shrink-0">
+        <Image
+          src="/brand/archboard-mark.png"
+          alt="ArchBoard"
+          width={32}
+          height={32}
+          className="w-8 h-8 rounded-lg object-cover shadow-sm ring-1 ring-slate-200/80"
+          priority
+        />
+        <span className="text-sm font-semibold tracking-tight hidden sm:inline">
+          <span className="text-slate-800">Arch</span>
+          <span className="text-blue-600">Board</span>
+        </span>
       </div>
 
       <div className="w-px h-5 bg-gray-200" />
