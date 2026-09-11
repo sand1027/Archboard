@@ -16,6 +16,20 @@ export type ComponentCategory =
   | 'observability'
   | 'security'
   | 'frames'
+  // New deep-dive categories
+  | 'sharding'
+  | 'rate-limiting'
+  | 'caching-patterns'
+  | 'replication'
+  | 'load-balancing'
+  | 'streaming'
+  | 'consistency'
+  | 'resilience'
+  | 'db-internals'
+  | 'infra-devops'
+  | 'external'
+  | 'actors'
+  | 'patterns'
 
 export type Protocol =
   | 'HTTP'

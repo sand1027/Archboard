@@ -18,18 +18,34 @@ import type { LldCatalogItem, LldLibraryTab } from '@/types/lld'
 import ComponentItem from './ComponentItem'
 import LldItem from './LldItem'
 
-const CATEGORIES: { id: ComponentCategory | 'all'; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'clients', label: 'Clients' },
-  { id: 'networking', label: 'Networking' },
-  { id: 'compute', label: 'Compute' },
-  { id: 'services', label: 'Services' },
-  { id: 'databases', label: 'Databases' },
-  { id: 'storage', label: 'Storage' },
-  { id: 'caching', label: 'Caching' },
-  { id: 'messaging', label: 'Messaging' },
-  { id: 'observability', label: 'Observability' },
-  { id: 'security', label: 'Security' },
+const CATEGORIES: { id: ComponentCategory | 'all'; label: string; group: string }[] = [
+  { id: 'all',              label: 'All',                  group: 'browse' },
+  // Core
+  { id: 'clients',          label: 'Clients',              group: 'core' },
+  { id: 'networking',       label: 'Networking',           group: 'core' },
+  { id: 'compute',          label: 'Compute',              group: 'core' },
+  { id: 'services',         label: 'Services',             group: 'core' },
+  { id: 'databases',        label: 'Databases',            group: 'core' },
+  { id: 'storage',          label: 'Storage',              group: 'core' },
+  { id: 'caching',          label: 'Caching',              group: 'core' },
+  { id: 'messaging',        label: 'Messaging',            group: 'core' },
+  { id: 'observability',    label: 'Observability',        group: 'core' },
+  { id: 'security',         label: 'Security',             group: 'core' },
+  // Deep-dive
+  { id: 'sharding',         label: 'Sharding',             group: 'deep' },
+  { id: 'rate-limiting',    label: 'Rate Limiting',        group: 'deep' },
+  { id: 'caching-patterns', label: 'Cache Patterns',       group: 'deep' },
+  { id: 'replication',      label: 'Replication',          group: 'deep' },
+  { id: 'load-balancing',   label: 'Load Balancing',       group: 'deep' },
+  { id: 'streaming',        label: 'Streaming',            group: 'deep' },
+  { id: 'consistency',      label: 'Consistency',          group: 'deep' },
+  { id: 'resilience',       label: 'Resilience',           group: 'deep' },
+  { id: 'db-internals',     label: 'DB Internals',         group: 'deep' },
+  // System
+  { id: 'patterns',         label: 'Arch Patterns',        group: 'system' },
+  { id: 'infra-devops',     label: 'Infra / DevOps',       group: 'system' },
+  { id: 'external',         label: 'External',             group: 'system' },
+  { id: 'actors',           label: 'Actors',               group: 'system' },
 ]
 
 const PROVIDERS: { id: Provider; label: string; color: string }[] = [
@@ -218,19 +234,24 @@ export default function ComponentLibrary() {
               Categories
             </p>
             <div className="flex flex-col gap-0.5">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={[
-                    'flex items-center px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors',
-                    activeCategory === cat.id
-                      ? 'bg-slate-900 text-white font-medium'
-                      : 'text-slate-600 hover:bg-slate-100',
-                  ].join(' ')}
-                >
-                  {cat.label}
-                </button>
+              {/* All */}
+              {CATEGORIES.filter((c) => c.group === 'browse').map((cat) => (
+                <CategoryBtn key={cat.id} cat={cat} active={activeCategory === cat.id} onClick={setActiveCategory} />
+              ))}
+
+              <p className="text-[9px] font-semibold text-slate-300 uppercase tracking-wider px-0.5 pt-2 pb-0.5">Core</p>
+              {CATEGORIES.filter((c) => c.group === 'core').map((cat) => (
+                <CategoryBtn key={cat.id} cat={cat} active={activeCategory === cat.id} onClick={setActiveCategory} />
+              ))}
+
+              <p className="text-[9px] font-semibold text-slate-300 uppercase tracking-wider px-0.5 pt-2 pb-0.5">Deep Dive</p>
+              {CATEGORIES.filter((c) => c.group === 'deep').map((cat) => (
+                <CategoryBtn key={cat.id} cat={cat} active={activeCategory === cat.id} onClick={setActiveCategory} />
+              ))}
+
+              <p className="text-[9px] font-semibold text-slate-300 uppercase tracking-wider px-0.5 pt-2 pb-0.5">System</p>
+              {CATEGORIES.filter((c) => c.group === 'system').map((cat) => (
+                <CategoryBtn key={cat.id} cat={cat} active={activeCategory === cat.id} onClick={setActiveCategory} />
               ))}
             </div>
           </div>
@@ -259,6 +280,30 @@ export default function ComponentLibrary() {
         )}
       </div>
     </div>
+  )
+}
+
+function CategoryBtn({
+  cat,
+  active,
+  onClick,
+}: {
+  cat: { id: ComponentCategory | 'all'; label: string; group: string }
+  active: boolean
+  onClick: (id: ComponentCategory | Provider | 'all' | 'recent') => void
+}) {
+  return (
+    <button
+      onClick={() => onClick(cat.id)}
+      className={[
+        'flex items-center px-2.5 py-1.5 rounded-lg text-xs text-left transition-colors',
+        active
+          ? 'bg-slate-900 text-white font-medium'
+          : 'text-slate-600 hover:bg-slate-100',
+      ].join(' ')}
+    >
+      {cat.label}
+    </button>
   )
 }
 

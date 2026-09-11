@@ -1,26 +1,60 @@
 'use client'
 
 import Image from 'next/image'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import {
-  Undo2, Redo2, Download, Share2, Settings2,
+  Undo2, Redo2, Download,
   LayoutTemplate, Keyboard, Grid3x3, Magnet, ZoomIn,
-  ZoomOut, Maximize2, Plus, ChevronDown
+  ZoomOut, Maximize2, Clock, ChevronLeft,
+  CheckCircle2, Loader2, AlertCircle, LogOut,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useReactFlow } from '@xyflow/react'
+import { createClient } from '@/lib/supabase/client'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
 
-export default function TopToolbar() {
+interface TopToolbarProps {
+  diagramId?: string
+  saveStatus?: 'idle' | 'saving' | 'saved' | 'error'
+  onSave?: () => void
+  onHistoryOpen?: () => void
+  userEmail?: string
+}
+
+export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpen, userEmail }: TopToolbarProps) {
   const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid, switchBoard, activeBoard } =
     useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
   const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode } =
     useUiStore()
   const reactFlow = useReactFlow()
+  const router = useRouter()
   const [editingName, setEditingName] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
+
+  const isCloudMode = !!diagramId
+
+  const handleSignOut = useCallback(async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/auth')
+    router.refresh()
+  }, [router])
+
+  // Cmd+S to save
+  useEffect(() => {
+    if (!onSave) return
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        onSave()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onSave])
 
   const mode = activeBoard ?? boardMode
 
@@ -213,6 +247,53 @@ export default function TopToolbar() {
           icon={<Keyboard className="w-4 h-4" />}
         />
 
+        {/* History button — only in cloud mode */}
+        {isCloudMode && onHistoryOpen && (
+          <ToolbarButton
+            onClick={onHistoryOpen}
+            title="Version history"
+            icon={<Clock className="w-4 h-4" />}
+            label="History"
+          />
+        )}
+
+        <div className="w-px h-5 bg-gray-200 mx-1" />
+
+        {/* Save button — only in cloud mode */}
+        {isCloudMode && onSave && (
+          <button
+            onClick={onSave}
+            disabled={saveStatus === 'saving'}
+            title="Save to cloud (⌘S)"
+            className={[
+              'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border',
+              saveStatus === 'saving'
+                ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed'
+                : saveStatus === 'saved'
+                ? 'bg-green-50 text-green-700 border-green-200'
+                : saveStatus === 'error'
+                ? 'bg-red-50 text-red-600 border-red-200'
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300',
+            ].join(' ')}
+          >
+            {saveStatus === 'saving' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {saveStatus === 'saved'  && <CheckCircle2 className="w-3.5 h-3.5" />}
+            {saveStatus === 'error'  && <AlertCircle className="w-3.5 h-3.5" />}
+            {(!saveStatus || saveStatus === 'idle') && (
+              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
+                <path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-2-3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+                <path d="M5 1v4h6V1M5 9h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              </svg>
+            )}
+            <span>
+              {saveStatus === 'saving' ? 'Saving…'
+               : saveStatus === 'saved' ? 'Saved'
+               : saveStatus === 'error' ? 'Failed'
+               : 'Save'}
+            </span>
+          </button>
+        )}
+
         <div className="w-px h-5 bg-gray-200 mx-1" />
 
         <button
@@ -223,6 +304,33 @@ export default function TopToolbar() {
           <Download className="w-4 h-4" />
           <span>Export</span>
         </button>
+
+        {/* User avatar + sign out — only in cloud mode */}
+        {isCloudMode && userEmail && (
+          <>
+            <div className="w-px h-5 bg-gray-200 mx-1" />
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => router.push('/dashboard')}
+                title="Back to dashboard"
+                className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span className="hidden md:block">Diagrams</span>
+              </button>
+              <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-xs font-semibold" title={userEmail}>
+                {userEmail[0].toUpperCase()}
+              </div>
+              <button
+                onClick={handleSignOut}
+                title="Sign out"
+                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </header>
   )
