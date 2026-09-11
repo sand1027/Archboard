@@ -1,11 +1,15 @@
-import type { Metadata } from 'next'
-import WhiteboardApp from '@/components/WhiteboardApp'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 
-export const metadata: Metadata = {
-  title: 'ArchBoard — System Design Whiteboard',
-  description: 'Professional system architecture diagramming tool for engineers',
-}
+export default async function Page() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
 
-export default function Page() {
-  return <WhiteboardApp />
+  // Logged in → go to dashboard
+  if (user) {
+    redirect('/dashboard')
+  }
+
+  // Not logged in → go to auth
+  redirect('/auth')
 }

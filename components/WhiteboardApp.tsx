@@ -10,18 +10,29 @@ import KeyboardShortcutsModal from './ui/KeyboardShortcutsModal'
 import ExportModal from './ui/ExportModal'
 import { useUiStore } from '@/store/uiStore'
 
-// Everything inside ReactFlowProvider so toolbar zoom/fit and canvas share context
-function AppInner() {
+export interface WhiteboardAppProps {
+  diagramId?: string
+  saveStatus?: 'idle' | 'saving' | 'saved' | 'error'
+  onSave?: () => void
+  onHistoryOpen?: () => void
+  userId?: string
+  userEmail?: string
+}
+
+function AppInner({ diagramId, saveStatus, onSave, onHistoryOpen, userId, userEmail }: WhiteboardAppProps) {
   const { libraryOpen, inspectorOpen } = useUiStore()
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-100/40">
-      {/* Top toolbar — needs ReactFlow context for zoom/fit */}
-      <TopToolbar />
+      <TopToolbar
+        diagramId={diagramId}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onHistoryOpen={onHistoryOpen}
+        userEmail={userEmail}
+      />
 
-      {/* Three-panel layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Component Library */}
         <aside
           className="flex-shrink-0 overflow-hidden transition-all duration-200 border-r border-slate-200/80 bg-white"
           style={{ width: libraryOpen ? 240 : 0 }}
@@ -33,12 +44,10 @@ function AppInner() {
           )}
         </aside>
 
-        {/* Center: Canvas */}
         <main className="flex-1 overflow-hidden relative">
           <CanvasShell />
         </main>
 
-        {/* Right: Properties Inspector */}
         <aside
           className="flex-shrink-0 overflow-hidden transition-all duration-200 border-l border-slate-200/80 bg-white"
           style={{ width: inspectorOpen ? 260 : 0 }}
@@ -51,7 +60,6 @@ function AppInner() {
         </aside>
       </div>
 
-      {/* Modals — rendered at app level, outside canvas */}
       <TemplatesModal />
       <KeyboardShortcutsModal />
       <ExportModal />
@@ -59,10 +67,10 @@ function AppInner() {
   )
 }
 
-export default function WhiteboardApp() {
+export default function WhiteboardApp(props: WhiteboardAppProps) {
   return (
     <ReactFlowProvider>
-      <AppInner />
+      <AppInner {...props} />
     </ReactFlowProvider>
   )
 }
