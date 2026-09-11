@@ -77,6 +77,7 @@ interface UiState {
   templateModalOpen: boolean
   shortcutsModalOpen: boolean
   exportModalOpen: boolean
+  simulationOpen: boolean
 
   // Context menu
   contextMenu: {
@@ -113,6 +114,7 @@ interface UiState {
   setTemplateModalOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
   setExportModalOpen: (open: boolean) => void
+  setSimulationOpen: (open: boolean) => void
   setContextMenu: (menu: UiState['contextMenu']) => void
   hideContextMenu: () => void
   setTheme: (theme: Theme) => void
@@ -150,6 +152,7 @@ export const useUiStore = create<UiState>()(
       templateModalOpen: false,
       shortcutsModalOpen: false,
       exportModalOpen: false,
+      simulationOpen: false,
       contextMenu: { visible: false, x: 0, y: 0, type: 'canvas' },
       theme: 'light',
 
@@ -187,6 +190,7 @@ export const useUiStore = create<UiState>()(
       setTemplateModalOpen: (templateModalOpen) => set({ templateModalOpen }),
       setShortcutsModalOpen: (shortcutsModalOpen) => set({ shortcutsModalOpen }),
       setExportModalOpen: (exportModalOpen) => set({ exportModalOpen }),
+      setSimulationOpen: (simulationOpen) => set({ simulationOpen }),
       setContextMenu: (contextMenu) => set({ contextMenu }),
       hideContextMenu: () =>
         set((state) => ({ contextMenu: { ...state.contextMenu, visible: false } })),
