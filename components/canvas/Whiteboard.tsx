@@ -23,6 +23,7 @@ import '@xyflow/react/dist/style.css'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
+import { useSimulationStore } from '@/store/simulationStore'
 import { componentRegistry } from '@/data/components'
 import type { ArchitectureNode } from '@/types/diagram'
 import type { FrameNodeData, ShapeNodeData } from '@/types/architecture'
@@ -39,6 +40,7 @@ import ShapesToolbar from './ShapesToolbar'
 import ContextMenuComponent from '../ui/ContextMenu'
 import { findLldItem } from '@/data/lld'
 import { spawnLldNode } from '@/lib/spawnLldNode'
+import { inferConnection } from '@/lib/canvas/inferConnection'
 
 const nodeTypes: NodeTypes = {
   architecture: ArchitectureNodeComponent,
@@ -221,11 +223,16 @@ export default function Whiteboard() {
     [onEdgesChange, snapshotBeforeChange]
   )
 
-  // Build edge with active style applied
+  // Build edge with active style applied + behavior inference
   const handleConnect: OnConnect = useCallback(
     (connection) => {
       snapshotBeforeChange()
       const { activeEdgeStyle: es } = useUiStore.getState()
+      const currentNodes = useDiagramStore.getState().nodes
+
+      // ── Auto-infer label / protocol / connectionType from component behaviors ──
+      const inferred = inferConnection(connection, currentNodes)
+
       const markerStart = es.startArrow !== 'none'
         ? { type: es.startArrow as any }
         : undefined
@@ -243,7 +250,7 @@ export default function Whiteboard() {
         ...connection,
         id: generateId(),
         type: 'architecture',
-        animated: es.animated,
+        animated: inferred.animated ?? es.animated,
         markerStart,
         markerEnd,
         style: {
@@ -252,8 +259,10 @@ export default function Whiteboard() {
           strokeDasharray: dash,
         },
         data: {
-          connectionType: 'synchronous',
-          protocol: 'HTTPS',
+          // Inferred values come first; user's edge style preset can override protocol
+          connectionType: inferred.connectionType ?? 'synchronous',
+          protocol: inferred.protocol ?? 'HTTPS',
+          label: inferred.label ?? '',
           edgeLineStyle: es.lineStyle,
         },
       }
@@ -645,6 +654,28 @@ export default function Whiteboard() {
     [setContextMenu]
   )
 
+  // Failure-mode: clicking a node marks it as a fail point
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      const simState = useSimulationStore.getState()
+      if (simState.config.mode === 'failure-mode' && simState.status === 'idle') {
+        simState.toggleFailNode(node.id)
+      }
+    },
+    []
+  )
+
+  // Failure-mode: clicking an edge marks it as slow
+  const handleEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      const simState = useSimulationStore.getState()
+      if (simState.config.mode === 'failure-mode' && simState.status === 'idle') {
+        simState.toggleSlowEdge(edge.id)
+      }
+    },
+    []
+  )
+
   const handleNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault()
@@ -694,6 +725,8 @@ export default function Whiteboard() {
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onSelectionChange={handleSelectionChange}
+        onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
         onNodeContextMenu={handleNodeContextMenu}
         onEdgeContextMenu={handleEdgeContextMenu}
         onMoveEnd={handleMoveEnd}
