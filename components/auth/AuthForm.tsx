@@ -16,7 +16,6 @@ export default function AuthForm() {
   const [message, setMessage] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
-  const supabase = createClient()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,6 +23,7 @@ export default function AuthForm() {
     setMessage(null)
 
     startTransition(async () => {
+      const supabase = createClient()
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
           email,
@@ -49,6 +49,7 @@ export default function AuthForm() {
 
   const handleGithub = () => {
     startTransition(async () => {
+      const supabase = createClient()
       await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: { redirectTo: `${location.origin}/auth/callback` },
@@ -58,6 +59,7 @@ export default function AuthForm() {
 
   const handleGoogle = () => {
     startTransition(async () => {
+      const supabase = createClient()
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${location.origin}/auth/callback` },

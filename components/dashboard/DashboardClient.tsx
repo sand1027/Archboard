@@ -21,7 +21,6 @@ export default function DashboardClient({ initialDiagrams, user }: Props) {
   const [search, setSearch] = useState('')
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
-  const supabase = createClient()
 
   const filtered = diagrams.filter((d) =>
     d.name.toLowerCase().includes(search.toLowerCase())
@@ -57,6 +56,7 @@ export default function DashboardClient({ initialDiagrams, user }: Props) {
 
   const handleSignOut = () => {
     startTransition(async () => {
+      const supabase = createClient()
       await supabase.auth.signOut()
       router.push('/auth')
       router.refresh()
