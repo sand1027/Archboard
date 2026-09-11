@@ -12,6 +12,7 @@ import {
   type Edge,
 } from '@xyflow/react'
 import type { ArchitectureEdgeData, RelationKind } from '@/types/architecture'
+import { useSimulationStore } from '@/store/simulationStore'
 
 type ArchitectureEdgeType = Edge<ArchitectureEdgeData>
 
@@ -34,19 +35,25 @@ const PROTOCOL_COLORS: Record<string, string> = {
 const RELATION_STYLES: Partial<
   Record<RelationKind, { strokeDasharray?: string; end?: MarkerType; start?: MarkerType; label?: string }>
 > = {
-  association: { end: MarkerType.ArrowClosed },
-  inheritance: { end: MarkerType.Arrow },
-  realization: { strokeDasharray: '6,4', end: MarkerType.Arrow },
-  dependency: { strokeDasharray: '6,4', end: MarkerType.ArrowClosed },
-  composition: { end: MarkerType.ArrowClosed, start: MarkerType.ArrowClosed },
-  aggregation: { end: MarkerType.ArrowClosed },
-  'one-to-one': { end: MarkerType.ArrowClosed, label: '1:1' },
-  'one-to-many': { end: MarkerType.ArrowClosed, label: '1:N' },
-  'many-to-many': { end: MarkerType.ArrowClosed, label: 'N:M' },
-  'message-sync': { end: MarkerType.ArrowClosed },
-  'message-async': { strokeDasharray: '6,4', end: MarkerType.ArrowClosed },
+  association:      { end: MarkerType.ArrowClosed },
+  inheritance:      { end: MarkerType.Arrow },
+  realization:      { strokeDasharray: '6,4', end: MarkerType.Arrow },
+  dependency:       { strokeDasharray: '6,4', end: MarkerType.ArrowClosed },
+  composition:      { end: MarkerType.ArrowClosed, start: MarkerType.ArrowClosed },
+  aggregation:      { end: MarkerType.ArrowClosed },
+  'one-to-one':     { end: MarkerType.ArrowClosed, label: '1:1' },
+  'one-to-many':    { end: MarkerType.ArrowClosed, label: '1:N' },
+  'many-to-many':   { end: MarkerType.ArrowClosed, label: 'N:M' },
+  'message-sync':   { end: MarkerType.ArrowClosed },
+  'message-async':  { strokeDasharray: '6,4', end: MarkerType.ArrowClosed },
   'message-return': { strokeDasharray: '4,3', end: MarkerType.Arrow },
 }
+
+// Sim colors per packet — must match engine.ts PACKET_COLORS
+const SIM_COLORS = [
+  '#3B82F6','#10B981','#F59E0B','#8B5CF6',
+  '#EF4444','#0EA5E9','#F97316','#EC4899',
+]
 
 function ArchitectureEdgeComponent({
   id,
@@ -57,6 +64,21 @@ function ArchitectureEdgeComponent({
   markerEnd, markerStart,
   style: inlineStyle,
 }: EdgeProps<ArchitectureEdgeType>) {
+
+  // ── Simulation state — subscribe to a string that changes each tick ─────────
+  // We use string-based tick ID so the component knows when to re-check
+  const simStatus     = useSimulationStore((s) => s.status)
+  const isActive      = useSimulationStore((s) => s.activeEdgeIds.has(id))
+  const isFailed      = useSimulationStore((s) => s.failedEdgeIds.has(id))
+  const packetColor   = useSimulationStore((s) => {
+    const pkt = s.packets.find((p) => p.edgeId === id)
+    return pkt?.color ?? null
+  })
+
+  const isSimulating = simStatus === 'running' || simStatus === 'paused'
+  const simColor = isActive ? packetColor : null
+
+  // ── Normal edge styling ───────────────────────────────────────────────────
   const relationKind = data?.relationKind as RelationKind | undefined
   const relation = relationKind ? RELATION_STYLES[relationKind] : undefined
 
@@ -65,15 +87,36 @@ function ArchitectureEdgeComponent({
   const lineStyle = (data?.edgeLineStyle as string) ?? (relationKind?.startsWith('message') ? 'straight' : 'bezier')
   const protocolColor = data?.protocol ? PROTOCOL_COLORS[data.protocol as string] ?? '#374151' : '#374151'
 
-  const strokeColor = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
-  const strokeWidth = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
-  const strokeDash =
-    (inlineStyle?.strokeDasharray as string) ??
-    relation?.strokeDasharray ??
-    semantic.strokeDasharray
+  // When simulating: active = packet color, failed = red, rest = dim
+  let strokeColor: string
+  let strokeWidth: number
+  let strokeDash: string | undefined
+  let opacity = 1
 
+  if (isSimulating) {
+    if (isActive && simColor) {
+      strokeColor = simColor
+      strokeWidth = 2.5
+      strokeDash  = undefined   // animated flow — no manual dash, let RF handle it
+    } else if (isFailed) {
+      strokeColor = '#EF4444'
+      strokeWidth = 2
+      strokeDash  = '4,3'
+    } else {
+      // non-active edges dim during simulation
+      strokeColor = '#D1D5DB'
+      strokeWidth = 1
+      strokeDash  = undefined
+      opacity = 0.35
+    }
+  } else {
+    strokeColor = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
+    strokeWidth = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
+    strokeDash  = (inlineStyle?.strokeDasharray as string) ?? relation?.strokeDasharray ?? semantic.strokeDasharray
+  }
+
+  // ── Path ─────────────────────────────────────────────────────────────────
   const pathArgs = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
-
   let edgePath: string, labelX: number, labelY: number
 
   if (lineStyle === 'straight') {
@@ -87,10 +130,12 @@ function ArchitectureEdgeComponent({
     ;[edgePath, labelX, labelY] = getBezierPath(pathArgs)
   }
 
-  const edgeStyle = {
+  const edgeStyle: React.CSSProperties = {
     stroke: strokeColor,
     strokeWidth,
-    strokeDasharray: strokeDash,
+    strokeDasharray: isActive ? undefined : strokeDash,   // class handles dash when active
+    opacity,
+    transition: isSimulating ? 'stroke 0.15s, opacity 0.15s' : undefined,
   }
 
   const displayLabel =
@@ -99,13 +144,16 @@ function ArchitectureEdgeComponent({
     relation?.label ||
     (relationKind ? relationKind.replace(/-/g, ' ') : '')
 
-  const hasLabel = !!displayLabel
+  const hasLabel = !!displayLabel && !isSimulating  // hide labels during sim to reduce clutter
 
   const resolvedMarkerEnd =
     markerEnd ??
     (relation?.end
       ? { type: relation.end, width: 16, height: 16, color: strokeColor }
+      : isActive
+      ? { type: MarkerType.ArrowClosed, width: 14, height: 14, color: strokeColor }
       : undefined)
+
   const resolvedMarkerStart =
     markerStart ??
     (relation?.start
@@ -118,6 +166,7 @@ function ArchitectureEdgeComponent({
         id={id}
         path={edgePath}
         style={edgeStyle}
+        className={isActive ? 'sim-edge-active' : undefined}
         markerEnd={resolvedMarkerEnd as typeof markerEnd}
         markerStart={resolvedMarkerStart as typeof markerStart}
       />

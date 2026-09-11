@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Download,
   LayoutTemplate, Keyboard, Grid3x3, Magnet, ZoomIn,
   ZoomOut, Maximize2, Clock, ChevronLeft,
-  CheckCircle2, Loader2, AlertCircle, LogOut,
+  CheckCircle2, Loader2, AlertCircle, LogOut, Zap,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useReactFlow } from '@xyflow/react'
@@ -27,7 +27,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
   const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid, switchBoard, activeBoard } =
     useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
-  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode } =
+  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen } =
     useUiStore()
   const reactFlow = useReactFlow()
   const router = useRouter()
@@ -246,6 +246,20 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
           title="Keyboard shortcuts"
           icon={<Keyboard className="w-4 h-4" />}
         />
+        {/* Simulate button */}
+        <button
+          onClick={() => setSimulationOpen(!simulationOpen)}
+          title="Simulate request flow"
+          className={[
+            'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border',
+            simulationOpen
+              ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
+              : 'text-gray-700 border-gray-200 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300',
+          ].join(' ')}
+        >
+          <Zap className="w-4 h-4" />
+          <span>Simulate</span>
+        </button>
 
         {/* History button — only in cloud mode */}
         {isCloudMode && onHistoryOpen && (

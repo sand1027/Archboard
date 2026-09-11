@@ -8,6 +8,7 @@ import CanvasShell from './canvas/CanvasShell'
 import TemplatesModal from './templates/TemplatesModal'
 import KeyboardShortcutsModal from './ui/KeyboardShortcutsModal'
 import ExportModal from './ui/ExportModal'
+import SimulationPanel from './simulation/SimulationPanel'
 import { useUiStore } from '@/store/uiStore'
 
 export interface WhiteboardAppProps {
@@ -20,7 +21,7 @@ export interface WhiteboardAppProps {
 }
 
 function AppInner({ diagramId, saveStatus, onSave, onHistoryOpen, userId, userEmail }: WhiteboardAppProps) {
-  const { libraryOpen, inspectorOpen } = useUiStore()
+  const { libraryOpen, inspectorOpen, simulationOpen } = useUiStore()
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-100/40">
@@ -33,6 +34,7 @@ function AppInner({ diagramId, saveStatus, onSave, onHistoryOpen, userId, userEm
       />
 
       <div className="flex flex-1 overflow-hidden">
+        {/* Left: Component Library */}
         <aside
           className="flex-shrink-0 overflow-hidden transition-all duration-200 border-r border-slate-200/80 bg-white"
           style={{ width: libraryOpen ? 240 : 0 }}
@@ -44,19 +46,25 @@ function AppInner({ diagramId, saveStatus, onSave, onHistoryOpen, userId, userEm
           )}
         </aside>
 
+        {/* Center: Canvas */}
         <main className="flex-1 overflow-hidden relative">
           <CanvasShell />
         </main>
 
+        {/* Right: Properties Inspector OR Simulation Panel */}
         <aside
           className="flex-shrink-0 overflow-hidden transition-all duration-200 border-l border-slate-200/80 bg-white"
-          style={{ width: inspectorOpen ? 260 : 0 }}
+          style={{ width: (inspectorOpen || simulationOpen) ? 280 : 0 }}
         >
-          {inspectorOpen && (
-            <div className="w-[260px] h-full overflow-hidden">
+          {simulationOpen ? (
+            <div className="w-[280px] h-full overflow-hidden">
+              <SimulationPanel />
+            </div>
+          ) : inspectorOpen ? (
+            <div className="w-[280px] h-full overflow-hidden">
               <PropertiesPanel />
             </div>
-          )}
+          ) : null}
         </aside>
       </div>
 

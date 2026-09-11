@@ -93,3 +93,16 @@ html, body, #__next {
 .field-input::placeholder {
   color: #94a3b8;
 }
+
+/* Simulation marching-ants edge animation */
+@keyframes sim-flow {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0;  }
+}
+
+/* Applied to active simulation edges */
+.sim-edge-active {
+  stroke-dasharray: 10 5;
+  animation: sim-flow 0.5s linear infinite;
+  stroke-linecap: round;
+}
