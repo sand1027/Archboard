@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
-import { X, FileJson, Image, FileCode, Upload } from 'lucide-react'
+import { X, FileJson, Image, Upload } from 'lucide-react'
 import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
 import { importJSON } from '@/lib/export/exportDiagram'
@@ -75,13 +75,6 @@ export default function ExportModal() {
             description="Export full diagram data — can be re-imported"
             color="bg-blue-50 text-blue-600"
             onClick={() => { handleExportJSON(); setExportModalOpen(false) }}
-          />
-          <ExportOption
-            icon={<FileCode className="w-5 h-5" />}
-            title="SVG"
-            description="Vector graphic — all nodes, pure white background"
-            color="bg-purple-50 text-purple-600"
-            onClick={() => handleExportAndClose(handleExportSVG)}
           />
           <ExportOption
             icon={<Image className="w-5 h-5" />}

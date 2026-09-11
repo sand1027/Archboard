@@ -764,14 +764,25 @@ export default function Whiteboard() {
             if (node.type === 'icon') return '#F1F5F9'
             if (node.type === 'shape') {
               const d = node.data as ShapeNodeData
-              return (d.stroke as string) ?? '#6366F1'
+              return (d.fill && d.fill !== 'transparent' ? d.fill : d.stroke) as string ?? '#6366F1'
             }
             const d = node.data as any
-            if (d?.provider === 'aws') return '#FF990040'
-            return '#6366F140'
+            if (d?.provider === 'aws') return '#FF9900'
+            return '#6366F1'
           }}
-          className="!bg-white !border !border-gray-200 !rounded-lg !shadow-sm"
-          maskColor="rgba(241,245,249,0.7)"
+          nodeStrokeColor={(node) => {
+            if (node.type === 'frame') return '#D1D5DB'
+            const d = node.data as any
+            if (d?.provider === 'aws') return '#CC7A00'
+            return '#4F46E5'
+          }}
+          nodeStrokeWidth={2}
+          nodeBorderRadius={3}
+          className="!bg-white !border !border-gray-200 !rounded-xl !shadow-md"
+          maskColor="rgba(241,245,249,0.6)"
+          style={{ width: 160, height: 100 }}
+          zoomable
+          pannable
         />
 
         {/* Floating shapes toolbar — bottom-centre of canvas */}

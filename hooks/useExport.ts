@@ -3,7 +3,7 @@
 import { useCallback } from 'react'
 import { useReactFlow, getNodesBounds, getViewportForBounds } from '@xyflow/react'
 import { useDiagramStore } from '@/store/diagramStore'
-import { exportPNG, exportSVG, exportJSON } from '@/lib/export/exportDiagram'
+import { exportPNG, exportJSON } from '@/lib/export/exportDiagram'
 import type { Diagram } from '@/types/diagram'
 
 const PADDING = 40
@@ -46,9 +46,8 @@ export function useExport() {
   }, [getExportOptions])
 
   const handleExportSVG = useCallback(async () => {
-    const opts = getExportOptions()
-    await exportSVG(opts)
-  }, [getExportOptions])
+    // SVG export removed
+  }, [])
 
   const handleExportJSON = useCallback(() => {
     const diagram: Diagram = {
