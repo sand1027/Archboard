@@ -73,10 +73,58 @@ export interface ArchitectureComponent {
   description: string
   tags: string[]
   metadata?: Record<string, unknown>
+  behavior?: ComponentBehavior
   // For future validation support
   typicalConnections?: {
     upstream?: string[]
     downstream?: string[]
+  }
+}
+
+// ─── Component Behavior ───────────────────────────────────────────────────────
+// Describes what flows in and out of a component — used to auto-infer
+// edge labels, protocols and connection types when arrows are drawn.
+
+export type FlowRole =
+  | 'request' | 'response' | 'query' | 'result'
+  | 'publish' | 'subscribe' | 'consume' | 'produce'
+  | 'read' | 'write' | 'replicate' | 'stream'
+  | 'forward' | 'route' | 'balance' | 'proxy'
+  | 'cache-read' | 'cache-write' | 'cache-miss'
+  | 'authenticate' | 'authorize' | 'token'
+  | 'emit' | 'receive' | 'notify' | 'trigger'
+  | 'store' | 'retrieve' | 'upload' | 'download'
+  | 'log' | 'metric' | 'trace' | 'alert'
+  | 'deploy' | 'pull' | 'push' | 'build'
+  | 'resolve' | 'lookup'
+  | 'connect' | 'disconnect'
+  | 'sync' | 'async'
+  | 'data'
+
+export interface ComponentPort {
+  /** Human-readable label for this port e.g. "HTTP request" */
+  flowLabel: string
+  protocol: Protocol | string
+  connectionType: ConnectionType
+  role: FlowRole
+  /** Optional hint for what data/payload flows e.g. "domain query", "JWT token" */
+  dataHint?: string
+}
+
+export interface ComponentBehavior {
+  /** What this component sends when it initiates a connection (outgoing arrow FROM this) */
+  outbound: ComponentPort
+  /** What this component expects to receive (incoming arrow TO this) */
+  inbound: ComponentPort
+  /** Architecture pattern this component belongs to */
+  pattern?: string
+  /** Simulation hints */
+  sim?: {
+    latencyMs?: number       // typical one-hop latency
+    fanout?: boolean         // does it fan out to multiple targets?
+    async?: boolean          // does it queue/buffer?
+    ordered?: boolean        // does it preserve order?
+    stateful?: boolean       // does it hold state?
   }
 }
 
