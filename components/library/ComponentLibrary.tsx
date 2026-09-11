@@ -55,6 +55,9 @@ const PROVIDERS: { id: Provider; label: string; color: string }[] = [
   { id: 'kubernetes', label: 'K8s', color: '#326CE5' },
 ]
 
+// "ByteByteGo" is a tag-based filter, not a provider — handled specially
+const BBG_TAG = 'bbg'
+
 const LLD_TABS: { id: LldLibraryTab; label: string }[] = [
   { id: 'flowchart', label: 'Flow' },
   { id: 'uml', label: 'UML' },
@@ -86,6 +89,9 @@ export default function ComponentLibrary() {
   const filteredComponents = useMemo(() => {
     if (searchQuery.trim()) return searchComponents(searchQuery)
     if (activeCategory === 'all') return componentRegistry
+    if (activeCategory === 'bbg' as any) {
+      return componentRegistry.filter((c) => c.tags.includes('bbg'))
+    }
     if (activeCategory === 'recent') {
       return recentlyUsed
         .map((id) => componentRegistry.find((c) => c.id === id))
@@ -208,6 +214,18 @@ export default function ComponentLibrary() {
               Providers
             </p>
             <div className="flex flex-wrap gap-1">
+              {/* ByteByteGo filter */}
+              <button
+                onClick={() => setActiveCategory('bbg' as any)}
+                className={[
+                  'px-2 py-1 rounded-md text-[11px] font-medium transition-all border',
+                  activeCategory === ('bbg' as any)
+                    ? 'bg-slate-700 text-white border-transparent shadow-sm'
+                    : 'text-slate-600 bg-slate-50 border-slate-200 hover:border-slate-300',
+                ].join(' ')}
+              >
+                BBG
+              </button>
               {PROVIDERS.map((p) => {
                 const active = activeCategory === p.id
                 return (

@@ -1,6 +1,7 @@
 import type { ArchitectureComponent, ComponentCategory, Provider } from '@/types'
 import { genericComponents } from './generic'
 import { awsComponents } from './aws'
+import { bytebytegoComponents } from './bytebytego'
 import {
   shardingComponents,
   rateLimitingComponents,
@@ -20,6 +21,7 @@ import {
 export const componentRegistry: ArchitectureComponent[] = [
   ...genericComponents,
   ...awsComponents,
+  ...bytebytegoComponents,
   ...shardingComponents,
   ...rateLimitingComponents,
   ...cachingPatternComponents,
