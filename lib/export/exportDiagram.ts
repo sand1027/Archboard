@@ -121,17 +121,17 @@ export async function exportSVG(opts: ExportOptions): Promise<void> {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function safeName(name: string) {
+export function safeName(name: string) {
   return name.replace(/\s+/g, '-').toLowerCase()
 }
 
-function downloadBlob(blob: Blob, filename: string) {
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   downloadDataUrl(url, filename)
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function downloadDataUrl(url: string, filename: string) {
+export function downloadDataUrl(url: string, filename: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
