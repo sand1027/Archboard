@@ -30,6 +30,7 @@ const SHORTCUTS = [
   { keys: ['H'], desc: 'Hand tool' },
   { keys: ['R'], desc: 'Rectangle / Process' },
   { keys: ['D'], desc: 'Diamond / Decision' },
+  { keys: ['Double-click'], desc: 'Empty canvas → text; shape → label; arrow → mid label' },
 ]
 
 export default function KeyboardShortcutsModal() {
