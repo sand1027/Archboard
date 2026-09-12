@@ -229,3 +229,94 @@ describe('expectedWaitMs', () => {
     expect(expectedWaitMs(0, 0.9)).toBe(0)
   })
 })
+
+describe('nodeCapacity from instance sizing', () => {
+  /**
+   * Hardware is the honest source of concurrency. Without this, changing a node from 1 to
+   * 20 instances in the inspector would have no effect on the simulation at all.
+   */
+  it('derives concurrency from instances and cores', () => {
+    // 4 instances × 2 vCPU × 4 per vCPU = 32.
+    expect(
+      nodeCapacity({ category: 'services', instances: 4, vcpu: 2, concurrencyPerVcpu: 4 })
+        .concurrency
+    ).toBe(32)
+  })
+
+  it('scales with instance count', () => {
+    const one = nodeCapacity({ category: 'services', instances: 1, vcpu: 2 }).concurrency
+    const four = nodeCapacity({ category: 'services', instances: 4, vcpu: 2 }).concurrency
+    expect(four).toBe(one * 4)
+  })
+
+  it('ignores sizing when the node specifies none', () => {
+    expect(nodeCapacity({ category: 'databases' }).concurrency).toBe(
+      CAPACITY_BY_CATEGORY.databases!.concurrency
+    )
+  })
+
+  // A queue buffers far beyond what its cores suggest — that is what a queue is for.
+  it('keeps the async floor above derived sizing', () => {
+    expect(
+      nodeCapacity({
+        componentId: 'message-queue',
+        category: 'messaging',
+        instances: 1,
+        vcpu: 1,
+      }).concurrency
+    ).toBe(ASYNC_CONCURRENCY)
+  })
+
+  it('still lets an explicit concurrency override win', () => {
+    expect(
+      nodeCapacity({ category: 'services', instances: 10, vcpu: 8, concurrency: 3 }).concurrency
+    ).toBe(3)
+  })
+})
+
+describe('nodeCapacity from component configuration', () => {
+  /**
+   * A 64-core database with a connection pool of 20 serves 20 at a time. The declared
+   * ceiling is the real constraint, whatever hardware sits behind it.
+   */
+  it('caps concurrency at a declared connection pool', () => {
+    expect(
+      nodeCapacity({
+        category: 'databases',
+        instances: 4,
+        vcpu: 16,
+        config: { connectionPool: 20 },
+      }).concurrency
+    ).toBe(20)
+  })
+
+  it('caps an async component too, since a partition count is a real limit', () => {
+    expect(
+      nodeCapacity({
+        componentId: 'kafka',
+        category: 'streaming',
+        config: { partitions: 12 },
+      }).concurrency
+    ).toBe(12)
+  })
+
+  // A generous pool should not invent capacity the hardware cannot provide.
+  it('never raises concurrency above what the hardware gives', () => {
+    const withoutPool = nodeCapacity({ category: 'services', instances: 1, vcpu: 2 }).concurrency
+    expect(
+      nodeCapacity({
+        category: 'services',
+        instances: 1,
+        vcpu: 2,
+        config: { connectionPool: 100_000 },
+      }).concurrency
+    ).toBe(withoutPool)
+  })
+
+  it('takes sizing from a chosen instance type', () => {
+    // r5.xlarge is 4 vCPU; services default to 4 requests per vCPU and 3 instances.
+    expect(
+      nodeCapacity({ category: 'services', config: { instanceType: 'r5.xlarge' } }).concurrency
+    ).toBe(4 * 4 * 3)
+  })
+})
