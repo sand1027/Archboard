@@ -1,8 +1,24 @@
 // ─── Simulation types ─────────────────────────────────────────────────────────
 
+/**
+ * How loaded a node was over a run.
+ *
+ * Declared here rather than in lib/simulation/capacity.ts, which computes it, so that
+ * types stays a leaf module and nothing under types/ has to import from lib/.
+ */
+export type BottleneckSeverity = 'none' | 'busy' | 'saturated'
+
 export type SimMode = 'request-flow' | 'load-test' | 'failure-mode'
 export type SimStatus = 'idle' | 'running' | 'paused' | 'finished'
-export type PacketStatus = 'travelling' | 'arrived' | 'failed' | 'queued'
+/**
+ * Where a packet is in its life.
+ *
+ * `travelling` is on an edge; `queued` and `serving` are both at a node, waiting for
+ * a free server and occupying one respectively. Previously this also declared
+ * `arrived` and `failed`, which were never assigned to anything — a packet that
+ * arrives is replaced by its successors and a failed one is dropped.
+ */
+export type PacketStatus = 'travelling' | 'queued' | 'serving'
 export type NodeSimStatus = 'idle' | 'active' | 'processing' | 'error' | 'slow'
 
 export interface SimPacket {
@@ -47,11 +63,28 @@ export interface SimLogEntry {
 export interface NodeStat {
   nodeId: string
   requestsIn: number
+  /** Requests this node forwarded downstream after serving them. */
   requestsOut: number
   errors: number
+  /** Mean time a request spent at this node: queue wait plus service. */
   avgLatencyMs: number
   totalLatencyMs: number
   isBottleneck: boolean
+
+  // ── Contention ──
+  /** Requests waiting for a free server right now. */
+  queueDepth: number
+  /** Deepest the queue got over the run. */
+  maxQueueDepth: number
+  /** Mean time a request spent waiting before service started. */
+  avgWaitMs: number
+  /** Fraction of serving capacity used, 0..1. */
+  utilisation: number
+  /** Capacity in force for this node, after category defaults and overrides. */
+  serviceMs: number
+  concurrency: number
+  /** How loaded it was: 'none' | 'busy' | 'saturated'. */
+  severity: BottleneckSeverity
 }
 
 export interface SimStats {
