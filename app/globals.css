@@ -28,9 +28,17 @@ html, body, #__next {
   background: transparent !important;
 }
 
-/* Hide any leftover connection handle chrome on architecture icons */
+/*
+  Architecture icons used to have no connection handles, so this file hid them
+  outright. They are real connection points now, and `display: none !important`
+  here beat every component-level style — the handles were rendering and simply
+  could not be painted.
+
+  Visibility is owned by the node component (hover / selected / connect mode) via
+  inline opacity, so no global rule should touch it.
+*/
 .react-flow__node-architecture .react-flow__handle {
-  display: none !important;
+  z-index: 25;
 }
 
 .react-flow__node.selected > div {
