@@ -1,7 +1,8 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import {
+  useInternalNode,
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
@@ -13,24 +14,22 @@ import {
 } from '@xyflow/react'
 import type { ArchitectureEdgeData, RelationKind } from '@/types/architecture'
 import { useSimulationStore } from '@/store/simulationStore'
+import { HLD_NOTATION, PROTOCOL_COLORS } from '@/lib/canvas/hldNotation'
+import { markerUrl } from '@/lib/canvas/markers'
+import { getFloatingEdgeParamsForIcons } from '@/lib/canvas/floatingEdge'
+import {
+  curveThrough,
+  hasOffset,
+  offsetMidpoint,
+  polylineThrough,
+  type EdgeOffset,
+} from '@/lib/canvas/edgeOffset'
+import { EdgeDragHandle } from './EdgeDragHandle'
+import { useEdgeOffsetDrag } from './useEdgeOffsetDrag'
+import { useDiagramStore } from '@/store/diagramStore'
+import { dashArray } from '@/types/lld'
 
 type ArchitectureEdgeType = Edge<ArchitectureEdgeData>
-
-const CONNECTION_STYLES: Record<string, { stroke: string; strokeDasharray?: string; strokeWidth: number }> = {
-  synchronous:    { stroke: '#374151', strokeWidth: 1.5 },
-  asynchronous:   { stroke: '#7C3AED', strokeDasharray: '6,4', strokeWidth: 1.5 },
-  replication:    { stroke: '#1D4ED8', strokeWidth: 2.5 },
-  event:          { stroke: '#D97706', strokeDasharray: '4,3', strokeWidth: 1.5 },
-  read:           { stroke: '#0284C7', strokeWidth: 1.5 },
-  write:          { stroke: '#DC2626', strokeWidth: 1.5 },
-  bidirectional:  { stroke: '#374151', strokeWidth: 1.5 },
-}
-
-const PROTOCOL_COLORS: Record<string, string> = {
-  HTTP: '#374151', HTTPS: '#059669', TCP: '#374151', UDP: '#6B7280',
-  gRPC: '#7C3AED', WebSocket: '#D97706', SSE: '#0EA5E9', REST: '#059669',
-  GraphQL: '#E10098', Kafka: '#D97706', AMQP: '#F43F5E', MQTT: '#0EA5E9',
-}
 
 const RELATION_STYLES: Partial<
   Record<RelationKind, { strokeDasharray?: string; end?: MarkerType; start?: MarkerType; label?: string }>
@@ -55,8 +54,13 @@ const SIM_COLORS = [
   '#EF4444','#0EA5E9','#F97316','#EC4899',
 ]
 
+/** Label band height on architecture nodes; see ArchitectureNode. */
+const ARCH_LABEL_H = 20
+
 function ArchitectureEdgeComponent({
   id,
+  source, target,
+  sourceHandleId, targetHandleId,
   sourceX, sourceY,
   targetX, targetY,
   sourcePosition, targetPosition,
@@ -64,6 +68,16 @@ function ArchitectureEdgeComponent({
   markerEnd, markerStart,
   style: inlineStyle,
 }: EdgeProps<ArchitectureEdgeType>) {
+  const sourceNode = useInternalNode(source)
+  const targetNode = useInternalNode(target)
+  const updateEdge = useDiagramStore((st) => st.updateEdge)
+
+  const offset = data?.offset
+  const applyOffset = useCallback(
+    (next: EdgeOffset | undefined) => updateEdge(id, { offset: next }),
+    [id, updateEdge]
+  )
+  const drag = useEdgeOffsetDrag(offset, applyOffset)
 
   // ── Simulation state — subscribe to a string that changes each tick ─────────
   // We use string-based tick ID so the component knows when to re-check
@@ -83,9 +97,17 @@ function ArchitectureEdgeComponent({
   const relation = relationKind ? RELATION_STYLES[relationKind] : undefined
 
   const connType = data?.connectionType ?? 'synchronous'
-  const semantic = CONNECTION_STYLES[connType] ?? CONNECTION_STYLES.synchronous
-  const lineStyle = (data?.edgeLineStyle as string) ?? (relationKind?.startsWith('message') ? 'straight' : 'bezier')
-  const protocolColor = data?.protocol ? PROTOCOL_COLORS[data.protocol as string] ?? '#374151' : '#374151'
+  const semantic = HLD_NOTATION[connType] ?? HLD_NOTATION.synchronous
+  // Routing comes from the notation table, which asks for orthogonal
+  // (smoothstep) connectors — the clean right-angled look the LLD board already
+  // has. This previously hardcoded 'bezier', so HLD_NOTATION.path was ignored and
+  // every HLD edge rendered as a loose curve.
+  const lineStyle =
+    (data?.edgeLineStyle as string) ??
+    (relationKind?.startsWith('message') ? 'straight' : semantic.path)
+  const protocolColor = data?.protocol
+    ? (PROTOCOL_COLORS[data.protocol] ?? '#374151')
+    : '#374151'
 
   // When simulating: active = packet color, failed = red, rest = dim
   let strokeColor: string
@@ -112,11 +134,41 @@ function ArchitectureEdgeComponent({
   } else {
     strokeColor = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
     strokeWidth = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
-    strokeDash  = (inlineStyle?.strokeDasharray as string) ?? relation?.strokeDasharray ?? semantic.strokeDasharray
+    strokeDash =
+      (inlineStyle?.strokeDasharray as string) ??
+      relation?.strokeDasharray ??
+      dashArray(semantic.line, semantic.strokeWidth)
   }
 
   // ── Path ─────────────────────────────────────────────────────────────────
-  const pathArgs = { sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition }
+  // An explicit handle is a deliberate choice, so honour it. Without one the
+  // edge floats: endpoints are derived from geometry so it meets whichever sides
+  // actually face each other, instead of defaulting to the first handle (which
+  // made every such edge leave the top).
+  // Only the four side handles are genuine anchors. A stale id (e.g. the
+  // connect-mode `body` handle, which unmounts with the preset) must fall through
+  // to floating geometry rather than be trusted.
+  const isSideHandle = (h: string | null | undefined) => !!h && /^[trbl](-in)?$/.test(h)
+  const hasExplicitHandles = isSideHandle(sourceHandleId) && isSideHandle(targetHandleId)
+
+  const floating =
+    !hasExplicitHandles && sourceNode && targetNode
+      ? getFloatingEdgeParamsForIcons(
+          sourceNode,
+          targetNode,
+          sourceNode.type === 'architecture' ? ARCH_LABEL_H : 0,
+          targetNode.type === 'architecture' ? ARCH_LABEL_H : 0
+        )
+      : null
+
+  const pathArgs = floating ?? {
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+  }
   let edgePath: string, labelX: number, labelY: number
 
   if (lineStyle === 'straight') {
@@ -128,6 +180,29 @@ function ArchitectureEdgeComponent({
     })
   } else {
     ;[edgePath, labelX, labelY] = getBezierPath(pathArgs)
+  }
+
+  // ── manual nudge ──────────────────────────────────────────────────────────
+  // An offset pulls the line through a dragged midpoint. The label moves with it,
+  // which is the point: two edges sharing a node pair otherwise stack their
+  // labels on top of each other.
+  const ends = {
+    sourceX: pathArgs.sourceX,
+    sourceY: pathArgs.sourceY,
+    targetX: pathArgs.targetX,
+    targetY: pathArgs.targetY,
+  }
+  const midpoint = offsetMidpoint(ends, offset)
+
+  if (hasOffset(offset)) {
+    // Bezier routing keeps a curve; everything else bends at the dragged point so
+    // a nudged connector stays as crisp as it was before the drag.
+    edgePath =
+      lineStyle === 'bezier'
+        ? curveThrough(ends, midpoint)
+        : polylineThrough(ends, midpoint)
+    labelX = midpoint.x
+    labelY = midpoint.y
   }
 
   const edgeStyle: React.CSSProperties = {
@@ -146,38 +221,75 @@ function ArchitectureEdgeComponent({
 
   const hasLabel = !!displayLabel && !isSimulating  // hide labels during sim to reduce clutter
 
-  const resolvedMarkerEnd =
-    markerEnd ??
-    (relation?.end
-      ? { type: relation.end, width: 16, height: 16, color: strokeColor }
-      : isActive
-      ? { type: MarkerType.ArrowClosed, width: 14, height: 14, color: strokeColor }
-      : undefined)
+  // Arrowheads come from HLD_NOTATION (or the LLD relation table on the legacy
+  // board). Custom SVG markers, so replication reads differently from an event.
+  const notationEnd = relation?.end
+    ? { type: relation.end, width: 16, height: 16, color: strokeColor }
+    : undefined
+  const notationStart = relation?.start
+    ? { type: relation.start, width: 14, height: 14, color: strokeColor }
+    : undefined
 
-  const resolvedMarkerStart =
-    markerStart ??
-    (relation?.start
-      ? { type: relation.start, width: 14, height: 14, color: strokeColor }
-      : undefined)
+  const resolvedMarkerEnd = markerEnd ?? notationEnd
+  const resolvedMarkerStart = markerStart ?? notationStart
+
+  // When no legacy relation/inline marker applies, use the shared glyph set.
+  const glyphEnd =
+    !resolvedMarkerEnd && !isSimulating ? markerUrl(semantic.endMarker, strokeColor) : undefined
+  const glyphStart =
+    !resolvedMarkerStart && !isSimulating
+      ? markerUrl(semantic.startMarker, strokeColor)
+      : undefined
 
   return (
     <>
       <BaseEdge
         id={id}
         path={edgePath}
+        // Widen the click target; a 1.5px line is hard to hit precisely. React
+        // Flow renders this as a separate transparent path, so it does not
+        // interfere with the visible stroke.
+        interactionWidth={20}
         style={edgeStyle}
         className={isActive ? 'sim-edge-active' : undefined}
-        markerEnd={resolvedMarkerEnd as typeof markerEnd}
-        markerStart={resolvedMarkerStart as typeof markerStart}
+        markerEnd={(resolvedMarkerEnd ?? glyphEnd) as typeof markerEnd}
+        markerStart={(resolvedMarkerStart ?? glyphStart) as typeof markerStart}
       />
+
+      {/*
+        Grab strip over the whole line. A single midpoint dot means the user has
+        to find a 14px target before the edge will move; here any point on the
+        connector can be dragged. Transparent stroke with pointerEvents on the
+        stroke only, so it widens the grab area without covering the canvas.
+        Clicks still bubble to React Flow's edge group, which is what selects the
+        edge — the hook only takes over once the pointer has actually moved.
+      */}
+      {!isSimulating && (
+        <path
+          d={edgePath}
+          className="nodrag nopan"
+          fill="none"
+          stroke="transparent"
+          strokeWidth={22}
+          strokeLinecap="round"
+          style={{ pointerEvents: 'stroke', cursor: drag.dragging ? 'grabbing' : 'grab' }}
+          {...drag.dragProps}
+          {...drag.resetProps}
+        />
+      )}
 
       {hasLabel && (
         <EdgeLabelRenderer>
           <div
             style={{
               position: 'absolute',
-              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-              pointerEvents: 'all',
+              // Lifted clear of the line so the grab dot at the midpoint stays
+              // readable underneath it.
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY - 14}px)`,
+              // Decoration only. With pointer events on, the chip sat over the
+              // middle of the line and swallowed both the grab dot and any click
+              // meant to select the edge.
+              pointerEvents: 'none',
             }}
             className="nodrag nopan"
           >
@@ -204,6 +316,18 @@ function ArchitectureEdgeComponent({
           </div>
         </EdgeLabelRenderer>
       )}
+
+      {/* After the label on purpose: rendered before it, the chip painted over
+          the dot and the edge looked immovable. */}
+      <EdgeLabelRenderer>
+        <EdgeDragHandle
+          x={midpoint.x}
+          y={midpoint.y}
+          visible={!!selected && !isSimulating}
+          color={strokeColor}
+          drag={drag}
+        />
+      </EdgeLabelRenderer>
     </>
   )
 }
