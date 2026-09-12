@@ -8,7 +8,7 @@ import { useSimulationStore } from '@/store/simulationStore'
 import { useUiStore } from '@/store/uiStore'
 import { useRouter } from 'next/navigation'
 import { lldWorkspacePath, useDiagramRouteId } from '@/hooks/useDiagramRouteId'
-import { Layers } from 'lucide-react'
+import { Layers, X } from 'lucide-react'
 import Image from 'next/image'
 
 type ArchitectureNodeType = Node<ArchitectureNodeData, 'architecture'>
@@ -53,6 +53,15 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
   const simStatus     = useSimulationStore((s) => s.status)
   const isSimulating  = simStatus === 'running' || simStatus === 'paused'
 
+  // Marked as down for failure injection. This is config, not run state, so it
+  // shows whether or not a simulation is going. Without it, clicking a node in
+  // failure mode changed the store and nothing on the canvas moved, which is
+  // indistinguishable from the click not working.
+  const markedDown = useSimulationStore((s) => s.config.failure.failNodes.has(id))
+  const failureMode = useSimulationStore(
+    (s) => s.config.mode === 'failure-mode' && s.status === 'idle'
+  )
+
   const accentColor =
     data.provider
       ? PROVIDER_COLORS[data.provider] ?? '#6B7280'
@@ -69,7 +78,18 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
   return (
     <div
       className="group relative flex flex-col items-center justify-start select-none bg-transparent"
-      style={{ width: w, height: h, cursor: connectMode && !isSimulating ? 'crosshair' : undefined }}
+      style={{
+        width: w,
+        height: h,
+        cursor: connectMode && !isSimulating ? 'crosshair' : failureMode ? 'pointer' : undefined,
+      }}
+      title={
+        failureMode
+          ? markedDown
+            ? `${data.label} is marked down — click to restore`
+            : `Click to mark ${data.label} as down`
+          : undefined
+      }
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -116,6 +136,37 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
       )}
 
       {/*
+        Marked down. A dashed ring rather than the solid one used for live status,
+        so "configured to fail" and "failing right now" stay distinguishable — during
+        a run a marked node shows both.
+      */}
+      {markedDown && (
+        <>
+          <div
+            className="absolute inset-0 rounded-xl pointer-events-none"
+            style={{
+              border: '2px dashed #EF4444',
+              background: 'rgba(239,68,68,0.06)',
+              zIndex: 19,
+            }}
+          />
+          <div
+            className="absolute -top-1.5 -right-1.5 flex items-center justify-center rounded-full pointer-events-none"
+            style={{
+              width: 16,
+              height: 16,
+              background: '#EF4444',
+              boxShadow: '0 0 0 2px #ffffff',
+              zIndex: 21,
+            }}
+            title={`${data.label} is marked down`}
+          >
+            <X className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+          </div>
+        </>
+      )}
+
+      {/*
         SVG icon.
 
         This is the positioning context for the handles, which is the whole point:
@@ -130,7 +181,9 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
         style={{
           width: w,
           height: h - LABEL_H,
-          opacity: isSimulating && !simNodeStatus ? 0.5 : 1,
+          // A node marked down stays at full strength even before traffic reaches
+          // it: it is the thing the user is watching for.
+          opacity: isSimulating && !simNodeStatus && !markedDown ? 0.5 : 1,
           transition: 'opacity 0.2s',
         }}
       >
