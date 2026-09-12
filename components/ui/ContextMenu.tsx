@@ -8,6 +8,8 @@ import { useHistoryStore } from '@/store/historyStore'
 import type { FrameNodeData } from '@/types/architecture'
 import type { ArchitectureNode } from '@/types/diagram'
 import { useReactFlow } from '@xyflow/react'
+import { useRouter } from 'next/navigation'
+import { lldWorkspacePath, useDiagramRouteId } from '@/hooks/useDiagramRouteId'
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -18,6 +20,8 @@ export default function ContextMenu() {
   const { nodes, edges, deleteNode, deleteEdge, copySelected, pasteClipboard, duplicateNodes, addNode, selectAll, selectedNodeIds } = useDiagramStore()
   const { pushSnapshot } = useHistoryStore()
   const reactFlow = useReactFlow()
+  const router = useRouter()
+  const diagramRouteId = useDiagramRouteId()
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -58,6 +62,19 @@ export default function ContextMenu() {
             copySelected()
           })}
         />
+        {nodes.find((n) => n.id === nodeId)?.type === 'architecture' && (
+          <>
+            <MenuSeparator />
+            <MenuItem
+              icon={<Layers className="w-4 h-4" />}
+              label="Open LLD"
+              onClick={wrap(() => {
+                const path = lldWorkspacePath(diagramRouteId, nodeId)
+                if (path) router.push(path)
+              })}
+            />
+          </>
+        )}
         <MenuSeparator />
         <MenuItem
           icon={<Square className="w-4 h-4" />}
