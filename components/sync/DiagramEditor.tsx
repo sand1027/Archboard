@@ -2,23 +2,16 @@
 
 import { useEffect, useState } from 'react'
 import { useDiagramStore } from '@/store/diagramStore'
-import { useUiStore } from '@/store/uiStore'
+import { applyRawDocument } from '@/lib/persistence/documentPayload'
 import { useDiagramSync } from '@/hooks/useDiagramSync'
 import { useThumbnail } from '@/hooks/useThumbnail'
 import WhiteboardApp from '@/components/WhiteboardApp'
 import HistorySidebar from '@/components/sync/HistorySidebar'
-import type { BoardMode, BoardSnapshot } from '@/types/diagram'
 
 interface Props {
   diagramId: string
-  initialData: {
-    activeBoard?: BoardMode
-    boards?: { hld: BoardSnapshot; lld: BoardSnapshot }
-    // legacy flat format
-    nodes?: unknown[]
-    edges?: unknown[]
-    viewport?: unknown
-  } | null
+  /** Raw jsonb from diagrams.data — any historical shape. */
+  initialData: unknown
   initialName: string
   userId: string
   userEmail: string
@@ -29,36 +22,12 @@ export default function DiagramEditor({ diagramId, initialData, initialName, use
   const { saveStatus, save, saveVersion } = useDiagramSync(diagramId)
   const { capture } = useThumbnail(diagramId, userId)
 
-  // Hydrate store from Supabase data on mount
+  // Hydrate both stores from Supabase data on mount. All payload shapes —
+  // v3 with LLD workspaces, v2 boards, and the legacy flat format — are handled
+  // by migrateDocument, so there is no format branching here any more.
   useEffect(() => {
-    const store = useDiagramStore.getState()
-    if (initialData) {
-      // New multi-board format
-      if (initialData.boards?.hld || initialData.boards?.lld) {
-        const activeBoard: BoardMode = initialData.activeBoard === 'lld' ? 'lld' : 'hld'
-        store.hydrateBoards({
-          activeBoard,
-          boards: {
-            hld: initialData.boards.hld ?? { diagramId, diagramName: initialName, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
-            lld: initialData.boards.lld ?? { diagramId: `${diagramId}-lld`, diagramName: `${initialName} LLD`, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
-          },
-        })
-        useUiStore.getState().setBoardMode(activeBoard)
-      }
-      // Legacy flat format
-      else if (initialData.nodes && initialData.edges) {
-        store.loadDiagram({
-          id: diagramId,
-          name: initialName,
-          nodes: initialData.nodes as any,
-          edges: initialData.edges as any,
-          viewport: (initialData.viewport as any) ?? { x: 0, y: 0, zoom: 1 },
-        })
-      } else {
-        store.setDiagramName(initialName)
-      }
-    } else {
-      store.setDiagramName(initialName)
+    if (!applyRawDocument(initialData)) {
+      useDiagramStore.getState().setDiagramName(initialName)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
