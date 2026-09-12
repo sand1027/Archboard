@@ -11,6 +11,12 @@ import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
 import { simulationEngine } from '@/lib/simulation/engine'
 import { buildGraph, readDataString, suggestStartNode } from '@/lib/simulation/traversal'
+import {
+  buildGroups,
+  isGroup,
+  startNodeOptionLabel,
+  suggestGroupAwareStart,
+} from '@/lib/simulation/groups'
 import type { SimMode } from '@/types/simulation'
 
 const MODE_OPTIONS: { id: SimMode; label: string; desc: string }[] = [
@@ -32,6 +38,36 @@ export default function SimulationPanel() {
     () => nodes.filter((n) => n.type === 'architecture' || n.type === 'icon'),
     [nodes]
   )
+
+  // Containment is geometric, so this is derived from the current layout — the same
+  // rule group-drag uses to decide what moves with a frame.
+  const groups = useMemo(() => buildGroups(nodes), [nodes])
+
+  /**
+   * Start-node choices: real components, plus any container that actually holds some.
+   * An empty frame is excluded, since starting a run from it could only ever do nothing.
+   */
+  const startOptions = useMemo(() => {
+    const options = archNodes.map((n) => ({
+      id: n.id,
+      label: readDataString(n.data, 'label') ?? readDataString(n.data, 'name') ?? n.id.slice(0, 8),
+      isGroup: false,
+    }))
+
+    for (const node of nodes) {
+      if (!isGroup(groups, node.id)) continue
+      const label =
+        readDataString(node.data, 'label') ?? readDataString(node.data, 'name') ?? 'Group'
+      options.push({
+        id: node.id,
+        label: startNodeOptionLabel(groups, node.id, label),
+        isGroup: true,
+      })
+    }
+
+    // Groups first: on a diagram that has them, they are usually the intended entry.
+    return options.sort((a, b) => Number(b.isGroup) - Number(a.isGroup))
+  }, [archNodes, nodes, groups])
 
   // Id → display name, so the failure lists can name what the user marked instead
   // of showing a truncated id.
@@ -72,15 +108,20 @@ export default function SimulationPanel() {
     // Default to the diagram's entry point rather than whichever node happens to be
     // first in the array. Starting from the middle leaves everything upstream of it
     // out of the run, which reads as a broken simulation rather than a bad default.
+    //
+    // Group-aware, so a diagram whose entry point is a Client frame holding a browser
+    // and a mobile app starts both instead of one.
     if (!config.startNodeId && archNodes.length > 0) {
-      const suggested = suggestStartNode(
+      const suggested = suggestGroupAwareStart(
+        groups,
         buildGraph(edges),
-        archNodes.map((n) => n.id)
+        archNodes.map((n) => n.id),
+        suggestStartNode
       )
       if (suggested) setStartNode(suggested)
     }
     simulationEngine.start()
-  }, [config.startNodeId, archNodes, edges, setStartNode])
+  }, [config.startNodeId, archNodes, edges, groups, setStartNode])
 
   const handlePause = useCallback(() => simulationEngine.pause(), [])
   const handleStop  = useCallback(() => simulationEngine.stop(),  [])
@@ -165,12 +206,17 @@ export default function SimulationPanel() {
               focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
           >
             <option value="">— pick a node —</option>
-            {nodes.map((n) => {
-              const d = n.data as any
-              const label = d?.label ?? d?.name ?? n.id.slice(0, 8)
-              return <option key={n.id} value={n.id}>{label}</option>
-            })}
+            {startOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
           </select>
+          {isGroup(groups, config.startNodeId) && (
+            <p className="text-[10px] text-gray-400 mt-1.5">
+              Every entry point inside this group sends a request.
+            </p>
+          )}
         </Section>
 
         {/* ── Settings ── */}
