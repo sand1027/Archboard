@@ -40,6 +40,7 @@ import UmlLifelineNodeComponent from './UmlLifelineNode'
 import IconNodeComponent from './IconNode'
 import ShapesToolbar from './ShapesToolbar'
 import ContextMenuComponent from '../ui/ContextMenu'
+import PacketLayer from '../simulation/PacketLayer'
 import { generateId } from '@/lib/canvas/ids'
 import { nodeBounds, centerInside, isContainerNode } from '@/lib/canvas/geometry'
 import { DND_MIME } from '@/lib/canvas/dnd'
@@ -729,9 +730,12 @@ export default function Whiteboard() {
     [setContextMenu]
   )
 
-  // Failure-mode: clicking a node marks it as a fail point
+  // Failure-mode: clicking a node marks it as a fail point. Restricted to
+  // architecture nodes, the only type that renders the "marked down" badge — marking
+  // something that shows no feedback is indistinguishable from the click failing.
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
+      if (node.type !== 'architecture') return
       const simState = useSimulationStore.getState()
       if (simState.config.mode === 'failure-mode' && simState.status === 'idle') {
         simState.toggleFailNode(node.id)
@@ -914,6 +918,10 @@ export default function Whiteboard() {
           zoomable
           pannable
         />
+
+        {/* Simulation packets. Must be a child of ReactFlow so ViewportPortal can
+            place it inside the transformed viewport and inherit pan and zoom. */}
+        <PacketLayer />
 
         {/* Floating shapes toolbar — bottom-centre of canvas */}
         <Panel position="bottom-center" style={{ marginBottom: 16 }}>
