@@ -56,6 +56,12 @@ import {
   groupStarters,
   type GroupMap,
 } from './groups'
+import {
+  EMPTY_REPLICAS,
+  buildReplicaSets,
+  findFailover,
+  type ReplicaSet,
+} from './replicas'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -140,6 +146,7 @@ class SimulationEngine {
   private requestIndex = 0
   private graph: Graph = new Map()
   private groups: GroupMap = EMPTY_GROUPS
+  private replicas: ReplicaSet = EMPTY_REPLICAS
   private activePackets: SimPacket[] = []
   private dispatchInterval: ReturnType<typeof setInterval> | null = null
 
@@ -189,6 +196,7 @@ class SimulationEngine {
     // derived fresh each run from the current layout rather than stored anywhere.
     this.groups = buildGroups(nodes)
     this.graph = expandGraphForGroups(buildGraph(edges), this.groups)
+    this.replicas = buildReplicaSets(nodes)
     this._initRuntimes(nodes)
 
     if (this._startPoints(config.startNodeId).length === 0) {
@@ -277,6 +285,7 @@ class SimulationEngine {
     this.branches.clear()
     this.nodeRuntimes.clear()
     this.groups = EMPTY_GROUPS
+    this.replicas = EMPTY_REPLICAS
     this.startedAt = 0
     useSimulationStore.getState().reset()
   }
@@ -694,6 +703,16 @@ class SimulationEngine {
     }
   }
 
+  /**
+   * Nodes a retry must not be sent to.
+   *
+   * Everything the user marked down, plus whatever just failed — a node can fail on the
+   * error-rate roll without being marked, and failing over onto it would be pointless.
+   */
+  private _unavailable(config: SimConfig, justFailedId: string): Set<string> {
+    return new Set([...config.failure.failNodes, justFailedId])
+  }
+
   private _later(fn: () => void, ms: number) {
     const id = setTimeout(() => {
       this.timers.delete(id)
@@ -730,7 +749,7 @@ class SimulationEngine {
       if (updatedPacket.progress >= 1) {
         // Reached the far node. It does not continue immediately any more: it has to
         // be served first, and may have to queue for a server.
-        this._onArrival(updatedPacket, nodes, edges, config, now)
+        this._onArrival(updatedPacket, nodes, edges, config, now, nextPackets)
       } else {
         activeEdgeIds.add(packet.edgeId)
         nextPackets.push(updatedPacket)
@@ -778,6 +797,7 @@ class SimulationEngine {
     edges: ArchitectureEdge[],
     config: SimConfig,
     now: number,
+    nextPackets: SimPacket[],
   ) {
     // Determine failure. The dice roll is supplied here so the rule itself stays a
     // pure function — see failure.ts.
@@ -828,9 +848,53 @@ class SimulationEngine {
     )
 
     if (failed) {
-      // Mark the edge as failed visually. This branch dies here; siblings continue.
-      // A node that is down does not serve, so nothing is queued for it.
+      // Mark the edge as failed visually. A node that is down does not serve, so
+      // nothing is queued for it.
       useSimulationStore.getState().setFailedEdge(packet.edgeId)
+
+      // Redundancy gets a chance before the branch dies. A diagram that bothers to
+      // mark replicas is asking whether they work, and the answer should be visible:
+      // the retry travels a real edge to a healthy peer.
+      const failover = findFailover(this.replicas, this.graph, {
+        failedId: packet.targetId,
+        fromId: packet.sourceId,
+        unavailable: this._unavailable(config, packet.targetId),
+        trail: packet.trail,
+      })
+
+      if (failover) {
+        const retry = this._makePacket(
+          packet.requestIndex,
+          packet.color,
+          packet.sourceId,
+          { edgeId: failover.edgeId, targetId: failover.nodeId },
+          // The failed node stays out of the trail: it was never successfully visited,
+          // and leaving it in would block a later legitimate hop through it.
+          packet.trail.slice(0, -1),
+          nodes,
+          edges,
+          config
+        )
+        if (retry) {
+          nextPackets.push(retry)
+          useSimulationStore.getState().addLogEntry({
+            id: uid(),
+            timestamp: Date.now(),
+            sourceLabel: nodeLabel(nodes, packet.targetId),
+            targetLabel: nodeLabel(nodes, failover.nodeId),
+            edgeId: failover.edgeId,
+            latencyMs: 0,
+            status: 'slow',
+            cause: 'failover to replica',
+          })
+          // The original branch became the retry, so it is retired rather than failed —
+          // a request served by a replica did not fail.
+          this._endBranch(packet.requestIndex, false)
+          return
+        }
+      }
+
+      // No healthy standby reachable. This branch dies here; siblings continue.
       this._endBranch(packet.requestIndex, true)
       return
     }
