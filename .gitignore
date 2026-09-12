@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# markdown notes and design docs — kept local, not part of the build
+*.md
+# already tracked, so keep them committable rather than leaving them
+# ignored-but-tracked (a state git handles confusingly)
+!README.md
+!AGENTS.md
+!CLAUDE.md
