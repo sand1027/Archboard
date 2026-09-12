@@ -1,16 +1,92 @@
 import { describe, it, expect } from 'vitest'
 import {
+  ASYNC_CONCURRENCY,
   BOTTLENECK_QUEUE_DEPTH,
   CAPACITY_BY_CATEGORY,
   GENERIC_CAPACITY,
   MAX_CONCURRENCY,
   MAX_SERVICE_MS,
+  behaviourHints,
   bottleneckSeverity,
   expectedWaitMs,
   isBottleneck,
   nodeCapacity,
   utilisation,
 } from './capacity'
+
+describe('behaviourHints', () => {
+  it('finds the authored hints for a known component', () => {
+    expect(behaviourHints('postgresql')?.latencyMs).toBe(10)
+    expect(behaviourHints('redis')?.latencyMs).toBe(1)
+    expect(behaviourHints('message-queue')?.async).toBe(true)
+  })
+
+  it('is undefined for an unknown or missing id', () => {
+    expect(behaviourHints('not-a-component')).toBeUndefined()
+    expect(behaviourHints(undefined)).toBeUndefined()
+  })
+})
+
+describe('nodeCapacity from authored component hints', () => {
+  /**
+   * The registry already carries a real latency for 193 of its 233 components. Guessing
+   * from the category instead lumped a 1ms cache and a 500ms warehouse together.
+   */
+  it('prefers the component hint over the category guess', () => {
+    const pg = nodeCapacity({ componentId: 'postgresql', category: 'databases' })
+    expect(pg.serviceMs).toBe(10)
+    expect(pg.serviceMs).not.toBe(CAPACITY_BY_CATEGORY.databases!.serviceMs)
+  })
+
+  it('still takes concurrency from the category, which hints do not describe', () => {
+    expect(nodeCapacity({ componentId: 'postgresql', category: 'databases' }).concurrency).toBe(
+      CAPACITY_BY_CATEGORY.databases!.concurrency
+    )
+  })
+
+  it('falls back to the category for a component with no hints', () => {
+    expect(nodeCapacity({ componentId: 'not-a-component', category: 'caching' })).toEqual(
+      CAPACITY_BY_CATEGORY.caching
+    )
+  })
+
+  it('keeps the relative ordering that makes a bottleneck findable', () => {
+    const cache = nodeCapacity({ componentId: 'redis', category: 'caching' })
+    const db = nodeCapacity({ componentId: 'postgresql', category: 'databases' })
+    expect(db.serviceMs).toBeGreaterThan(cache.serviceMs)
+    expect(db.concurrency).toBeLessThan(cache.concurrency)
+  })
+
+  /**
+   * A queue exists to absorb bursts its consumers cannot keep up with. Modelled as a
+   * narrow synchronous resource it queued, waited, and got blamed as the bottleneck —
+   * the opposite of what it does.
+   */
+  it('gives an async component deep capacity so it absorbs instead of blocking', () => {
+    expect(nodeCapacity({ componentId: 'message-queue', category: 'messaging' }).concurrency).toBe(
+      ASYNC_CONCURRENCY
+    )
+    expect(nodeCapacity({ componentId: 'kafka', category: 'streaming' }).concurrency).toBe(
+      ASYNC_CONCURRENCY
+    )
+  })
+
+  it('leaves a synchronous component narrow', () => {
+    expect(
+      nodeCapacity({ componentId: 'postgresql', category: 'databases' }).concurrency
+    ).toBeLessThan(ASYNC_CONCURRENCY)
+  })
+
+  it('lets an explicit override beat the authored hint', () => {
+    expect(
+      nodeCapacity({ componentId: 'postgresql', category: 'databases', serviceMs: 250 }).serviceMs
+    ).toBe(250)
+    expect(
+      nodeCapacity({ componentId: 'message-queue', category: 'messaging', concurrency: 2 })
+        .concurrency
+    ).toBe(2)
+  })
+})
 
 describe('nodeCapacity', () => {
   it('uses the profile for the node category', () => {

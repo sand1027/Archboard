@@ -14,7 +14,7 @@ export default function ExportModal() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   // useExport uses useReactFlow internally — must be inside ReactFlowProvider
-  const { handleExportPNG, handleExportSVG, handleExportJSON } = useExport()
+  const { handleExportPNG, handleExportJSON } = useExport()
 
   const handleExportAndClose = useCallback(async (fn: () => Promise<void> | void) => {
     setExportModalOpen(false)

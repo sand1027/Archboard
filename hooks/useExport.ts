@@ -45,10 +45,6 @@ export function useExport() {
     await exportPNG(opts)
   }, [getExportOptions])
 
-  const handleExportSVG = useCallback(async () => {
-    // SVG export removed
-  }, [])
-
   const handleExportJSON = useCallback(() => {
     const diagram: Diagram = {
       id: diagramId,
@@ -65,5 +61,5 @@ export function useExport() {
     exportJSON(diagram)
   }, [diagramId, diagramName, nodes, edges, viewport])
 
-  return { handleExportPNG, handleExportSVG, handleExportJSON }
+  return { handleExportPNG, handleExportJSON }
 }
