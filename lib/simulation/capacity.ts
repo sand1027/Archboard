@@ -1,6 +1,12 @@
 import type { ComponentCategory } from '@/types/architecture'
 import type { BottleneckSeverity } from '@/types/simulation'
 import { BEHAVIORS } from '@/data/components/behaviors'
+import {
+  configuredConcurrencyLimit,
+  derivedConcurrency,
+  hasInstanceConfig,
+  instanceProfile,
+} from './instances'
 
 /**
  * Node capacity, and the rule for calling one a bottleneck.
@@ -134,14 +140,30 @@ export function nodeCapacity(data: unknown): NodeCapacity {
 
   const hints = behaviourHints(readString(data, 'componentId'))
 
+  // Hardware is the honest source of concurrency, so sizing on the node wins over the
+  // category's flat guess. The async floor still applies on top: a queue buffers far
+  // beyond what its cores would suggest, which is the point of a queue.
+  const sizedConcurrency = hasInstanceConfig(data)
+    ? derivedConcurrency(instanceProfile(data))
+    : categoryBase.concurrency
+
+  // A configured ceiling — connection pool, max connections, partitions, reserved
+  // concurrency — is a real limit regardless of how much hardware sits behind it. A
+  // 64-core database with a pool of 20 serves 20 at a time.
+  const declaredLimit = configuredConcurrencyLimit(data)
+
   const base: NodeCapacity = {
     serviceMs:
       typeof hints?.latencyMs === 'number' && Number.isFinite(hints.latencyMs)
         ? clamp(hints.latencyMs, MIN_SERVICE_MS, MAX_SERVICE_MS, categoryBase.serviceMs)
         : categoryBase.serviceMs,
-    concurrency: hints?.async
-      ? Math.max(categoryBase.concurrency, ASYNC_CONCURRENCY)
-      : categoryBase.concurrency,
+    concurrency: (() => {
+      const fromHardware = hints?.async
+        ? Math.max(sizedConcurrency, ASYNC_CONCURRENCY)
+        : sizedConcurrency
+      // The declared ceiling caps the hardware, never raises it beyond what was asked for.
+      return declaredLimit === undefined ? fromHardware : Math.min(fromHardware, declaredLimit)
+    })(),
   }
 
   const serviceMs = readNumber(data, 'serviceMs')
