@@ -44,11 +44,18 @@ import {
 import {
   MAX_LIVE_PACKETS,
   buildGraph,
-  hasOutgoing,
   nextHops,
   readDataString,
   type Graph,
+  type Hop,
 } from './traversal'
+import {
+  EMPTY_GROUPS,
+  buildGroups,
+  expandGraphForGroups,
+  groupStarters,
+  type GroupMap,
+} from './groups'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -132,6 +139,7 @@ class SimulationEngine {
   private startedAt = 0
   private requestIndex = 0
   private graph: Graph = new Map()
+  private groups: GroupMap = EMPTY_GROUPS
   private activePackets: SimPacket[] = []
   private dispatchInterval: ReturnType<typeof setInterval> | null = null
 
@@ -177,10 +185,13 @@ class SimulationEngine {
     const { nodes, edges } = diagram
     const { config } = sim
 
-    this.graph = buildGraph(edges)
+    // Containers stand in for their contents. Membership is geometric, so this is
+    // derived fresh each run from the current layout rather than stored anywhere.
+    this.groups = buildGroups(nodes)
+    this.graph = expandGraphForGroups(buildGraph(edges), this.groups)
     this._initRuntimes(nodes)
 
-    if (!hasOutgoing(this.graph, config.startNodeId)) {
+    if (this._startPoints(config.startNodeId).length === 0) {
       // Nowhere to go — just animate a single-node pulse
       useSimulationStore.getState().setNodeStatus(config.startNodeId, 'active')
       this._later(() => {
@@ -265,6 +276,7 @@ class SimulationEngine {
     this.activePackets = []
     this.branches.clear()
     this.nodeRuntimes.clear()
+    this.groups = EMPTY_GROUPS
     this.startedAt = 0
     useSimulationStore.getState().reset()
   }
@@ -286,15 +298,44 @@ class SimulationEngine {
     }
   }
 
+  /**
+   * The real components a run begins at.
+   *
+   * A container has no edges of its own, so selecting one used to find no outgoing
+   * hops and the run would do nothing but pulse. Picking a group now starts every
+   * front-door member that has somewhere to go — select Client and both the browser
+   * and the mobile app send a request.
+   */
+  private _startPoints(startNodeId: string): string[] {
+    if (!startNodeId) return []
+
+    // Containerness, not membership: an empty frame is still not something a run can
+    // start from, and a frame of frames has to resolve through to real components.
+    if (this.groups.containers.has(startNodeId)) {
+      return groupStarters(this.groups, this.graph, startNodeId)
+    }
+
+    return (this.graph.get(startNodeId)?.length ?? 0) > 0 ? [startNodeId] : []
+  }
+
   private _spawnRequest(
     nodes: ArchitectureNode[],
     edges: ArchitectureEdge[],
     config: SimConfig,
   ) {
-    const start = config.startNodeId
-    const trail = [start]
-    const hops = nextHops(this.graph, start, trail)
-    if (hops.length === 0) return
+    const origins = this._startPoints(config.startNodeId)
+    if (origins.length === 0) return
+
+    // Every origin's first hop, gathered before anything is counted so an empty
+    // result cannot register a request that never leaves.
+    const departures: { from: string; trail: string[]; hop: Hop }[] = []
+    for (const from of origins) {
+      const trail = [from]
+      for (const hop of nextHops(this.graph, from, trail)) {
+        departures.push({ from, trail, hop })
+      }
+    }
+    if (departures.length === 0) return
 
     const idx = this.requestIndex++
     const color = PACKET_COLORS[idx % PACKET_COLORS.length]
@@ -303,15 +344,18 @@ class SimulationEngine {
       totalRequests: useSimulationStore.getState().stats.totalRequests + 1,
     })
 
-    // Pulse start node
-    useSimulationStore.getState().setNodeStatus(start, 'active')
-    this._later(() => useSimulationStore.getState().clearNodeStatus(start), 400)
+    // Pulse whatever actually originated the traffic. For a group that is its members,
+    // not the frame, since the frame is not a component.
+    for (const from of origins) {
+      useSimulationStore.getState().setNodeStatus(from, 'active')
+      this._later(() => useSimulationStore.getState().clearNodeStatus(from), 400)
+    }
 
-    // One branch per outgoing edge. A client wired to both a CDN and a load
-    // balancer exercises both, rather than whichever happened to head the sorted
-    // path list.
-    for (const hop of hops) {
-      const packet = this._makePacket(idx, color, start, hop, trail, nodes, edges, config)
+    // One branch per outgoing edge, across every origin. A client wired to both a CDN
+    // and a load balancer exercises both, rather than whichever happened to head the
+    // sorted path list.
+    for (const { from, trail, hop } of departures) {
+      const packet = this._makePacket(idx, color, from, hop, trail, nodes, edges, config)
       if (packet) this.activePackets.push(packet)
     }
   }
