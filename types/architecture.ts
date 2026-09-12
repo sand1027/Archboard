@@ -150,8 +150,38 @@ export interface ArchitectureNodeData extends Record<string, unknown> {
    * before a load test can find its bottleneck.
    */
   serviceMs?: number
+  /**
+   * Direct concurrency override. Normally left unset and derived from the instance
+   * sizing below; kept as an escape hatch for a tier whose parallelism has nothing to do
+   * with cores, such as a connection-pool limit.
+   */
   concurrency?: number
+
+  // ── Instance sizing ──
+  // Hardware is what buys concurrency, so these derive it rather than sitting alongside
+  // it. See lib/simulation/instances.ts.
+  /** Horizontal count — pods, VMs, shards. */
+  instances?: number
+  /** vCPU per instance. */
+  vcpu?: number
+  /** RAM per instance, in GB. */
+  memoryGb?: number
+  /** Requests one vCPU handles at once. 1 for CPU-bound work. */
+  concurrencyPerVcpu?: number
+
+  /**
+   * Component-specific configuration — engine and connection pool for a database, AMI and
+   * EBS volume for an EC2 instance, algorithm and health checks for a balancer.
+   *
+   * A free-form bag rather than typed fields because the shape depends on which component
+   * this is; the schema lives in lib/config/fields.ts. Kept separate from the typed
+   * capacity fields above so config keys cannot collide with them.
+   */
+  config?: Record<string, ConfigValue>
 }
+
+/** A configuration value. Narrow on purpose: these round-trip through stored JSON. */
+export type ConfigValue = string | number | boolean
 
 export type { RelationKind } from './lld'
 
