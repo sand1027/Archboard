@@ -1,0 +1,338 @@
+import { spawnShape } from '../spawnShape'
+import type { LldDiagramSpec } from './types'
+
+/** Classic flowchart / activity notation. */
+export const activitySpec: LldDiagramSpec<'activity'> = {
+  type: 'activity',
+  label: 'Flow',
+  description: 'Control flow through internal logic',
+
+  paletteGroups: [
+    {
+      id: 'flow',
+      label: 'Flow',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-terminal',
+          name: 'Start / End',
+          description: 'Rounded terminal',
+          tags: ['start', 'end', 'terminal', 'begin', 'stop'],
+          spawn: { shape: 'lldActivity', activityKind: 'start' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-process',
+          name: 'Process',
+          description: 'Step or action',
+          tags: ['process', 'action', 'step', 'rectangle'],
+          spawn: { shape: 'lldActivity', activityKind: 'action' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-decision',
+          name: 'Decision',
+          description: 'Diamond branch',
+          tags: ['decision', 'if', 'branch', 'diamond', 'condition'],
+          spawn: { shape: 'lldActivity', activityKind: 'decision' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-data',
+          name: 'Data',
+          description: 'Input / output parallelogram',
+          tags: ['data', 'io', 'input', 'output', 'parallelogram'],
+          spawn: { shape: 'lldActivity', activityKind: 'data' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-document',
+          name: 'Document',
+          description: 'Rectangle with a wavy base',
+          tags: ['document', 'report', 'print', 'wavy'],
+          spawn: { shape: 'lldActivity', activityKind: 'document' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-predefined',
+          name: 'Predefined process',
+          description: 'Subroutine — double side bars',
+          tags: ['predefined', 'subroutine', 'call', 'function'],
+          spawn: { shape: 'lldActivity', activityKind: 'predefined' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-connector',
+          name: 'Connector',
+          description: 'Small circle continuing the flow',
+          tags: ['connector', 'continuation', 'circle', 'jump'],
+          spawn: { shape: 'lldActivity', activityKind: 'connector' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-note',
+          name: 'Note',
+          description: 'Dog-eared annotation',
+          tags: ['note', 'annotation', 'comment'],
+          spawn: { shape: 'lldNote' },
+        },
+      ],
+    },
+    {
+      id: 'io',
+      label: 'Input & output',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-manual-input',
+          name: 'Manual input',
+          description: 'Sloped top edge — data keyed in by hand',
+          tags: ['manual', 'input', 'keyboard', 'entry'],
+          spawn: { shape: 'lldActivity', activityKind: 'manual-input' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-display',
+          name: 'Display',
+          description: 'Output shown to a person',
+          tags: ['display', 'screen', 'output', 'monitor'],
+          spawn: { shape: 'lldActivity', activityKind: 'display' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-multi-document',
+          name: 'Multi-document',
+          description: 'Several documents',
+          tags: ['documents', 'multiple', 'reports'],
+          spawn: { shape: 'lldActivity', activityKind: 'multi-document' },
+        },
+      ],
+    },
+    {
+      id: 'storage',
+      label: 'Storage',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-database',
+          name: 'Database',
+          description: 'Cylinder — direct-access storage',
+          tags: ['database', 'db', 'storage', 'cylinder', 'disk'],
+          spawn: { shape: 'lldActivity', activityKind: 'database' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-stored-data',
+          name: 'Stored data',
+          description: 'Generic persisted data',
+          tags: ['stored', 'data', 'persist'],
+          spawn: { shape: 'lldActivity', activityKind: 'stored-data' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-internal-storage',
+          name: 'Internal storage',
+          description: 'In-memory storage',
+          tags: ['internal', 'storage', 'memory', 'ram'],
+          spawn: { shape: 'lldActivity', activityKind: 'internal-storage' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-tape',
+          name: 'Sequential data',
+          description: 'Tape reel — sequential access',
+          tags: ['tape', 'sequential', 'archive', 'stream'],
+          spawn: { shape: 'lldActivity', activityKind: 'tape' },
+        },
+      ],
+    },
+    {
+      id: 'process-variants',
+      label: 'Process variants',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-manual-operation',
+          name: 'Manual operation',
+          description: 'Trapezoid — a step not automated',
+          tags: ['manual', 'operation', 'human', 'not automated'],
+          spawn: { shape: 'lldActivity', activityKind: 'manual-operation' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-delay',
+          name: 'Delay',
+          description: 'Waiting period in the process',
+          tags: ['delay', 'wait', 'pause', 'sla'],
+          spawn: { shape: 'lldActivity', activityKind: 'delay' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-preparation',
+          name: 'Preparation',
+          description: 'Hexagon — setup or initialisation',
+          tags: ['preparation', 'init', 'setup', 'hexagon'],
+          spawn: { shape: 'lldActivity', activityKind: 'preparation' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-loop-limit',
+          name: 'Loop limit',
+          description: 'Bounds a loop',
+          tags: ['loop', 'limit', 'bound', 'iterate'],
+          spawn: { shape: 'lldActivity', activityKind: 'loop-limit' },
+        },
+      ],
+    },
+    {
+      id: 'junctions',
+      label: 'Junctions & connectors',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-or',
+          name: 'Or',
+          description: 'Crossed circle — logical OR junction',
+          tags: ['or', 'junction', 'logical'],
+          spawn: { shape: 'lldActivity', activityKind: 'or' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-summing',
+          name: 'Summing junction',
+          description: 'Saltire circle — AND junction',
+          tags: ['summing', 'junction', 'and'],
+          spawn: { shape: 'lldActivity', activityKind: 'summing-junction' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-off-page',
+          name: 'Off-page connector',
+          description: 'Pentagon — continues on another page',
+          tags: ['off-page', 'connector', 'continue', 'pentagon'],
+          spawn: { shape: 'lldActivity', activityKind: 'off-page' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-extract',
+          name: 'Extract',
+          description: 'Triangle — splits one flow into several',
+          tags: ['extract', 'split', 'triangle'],
+          spawn: { shape: 'lldActivity', activityKind: 'extract' },
+        },
+      ],
+    },
+    {
+      id: 'uml-activity',
+      label: 'UML activity',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-send-signal',
+          name: 'Send signal',
+          description: 'Convex point — emits an event',
+          tags: ['send', 'signal', 'emit', 'event', 'publish'],
+          spawn: { shape: 'lldActivity', activityKind: 'send-signal' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-receive-signal',
+          name: 'Receive signal',
+          description: 'Concave notch — waits for an event',
+          tags: ['receive', 'signal', 'accept', 'event', 'subscribe'],
+          spawn: { shape: 'lldActivity', activityKind: 'receive-signal' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-time-event',
+          name: 'Time event',
+          description: 'Hourglass — a timer fires',
+          tags: ['time', 'timer', 'event', 'schedule', 'cron'],
+          spawn: { shape: 'lldActivity', activityKind: 'time-event' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-object-node',
+          name: 'Object node',
+          description: 'Data passed between actions',
+          tags: ['object', 'node', 'data', 'token'],
+          spawn: { shape: 'lldActivity', activityKind: 'object-node' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-final-flow',
+          name: 'Flow final',
+          description: 'Ends one flow without ending the activity',
+          tags: ['flow final', 'end flow', 'terminate branch'],
+          spawn: { shape: 'lldActivity', activityKind: 'final-flow' },
+        },
+      ],
+    },
+    {
+      id: 'concurrency',
+      label: 'Concurrency & grouping',
+      entries: [
+        {
+          kind: 'shape',
+          id: 'flow-fork',
+          name: 'Fork',
+          description: 'Split into parallel flows',
+          tags: ['fork', 'parallel', 'split', 'bar'],
+          spawn: { shape: 'lldActivity', activityKind: 'fork' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-join',
+          name: 'Join',
+          description: 'Synchronise parallel flows',
+          tags: ['join', 'sync', 'barrier', 'bar'],
+          spawn: { shape: 'lldActivity', activityKind: 'join' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-merge',
+          name: 'Merge',
+          description: 'Rejoin branches',
+          tags: ['merge', 'rejoin'],
+          spawn: { shape: 'lldActivity', activityKind: 'merge' },
+        },
+        {
+          kind: 'shape',
+          id: 'flow-swimlane',
+          name: 'Swimlane',
+          description: 'Responsibility lane',
+          tags: ['swimlane', 'lane', 'group', 'actor'],
+          spawn: { shape: 'lldSwimlane', orientation: 'horizontal' },
+        },
+      ],
+    },
+    {
+      id: 'connectors',
+      label: 'Connectors',
+      entries: [
+        {
+          kind: 'connector',
+          id: 'flow-conn-control',
+          name: 'Control flow',
+          description: 'Arrow, optionally labelled yes / no',
+          tags: ['flow', 'arrow', 'control'],
+          edgeKind: 'activity-flow',
+        },
+      ],
+    },
+  ],
+
+  edgeKinds: ['activity-flow'],
+  defaultEdgeKind: 'activity-flow',
+
+  // Swimlanes are containers, not flow participants.
+  isValidConnection: ({ source, target }) =>
+    source.type === 'lldActivity' && target.type === 'lldActivity',
+
+  exporters: [],
+
+  seed: () => {
+    const start = spawnShape({ shape: 'lldActivity', activityKind: 'start' }, { x: 280, y: 160 })
+    return { shapes: [start], edges: [] }
+  },
+}
