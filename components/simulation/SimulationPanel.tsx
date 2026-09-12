@@ -30,7 +30,7 @@ export default function SimulationPanel() {
   const { nodes, edges } = useDiagramStore()
   const {
     status, config, log, stats, nodeStats,
-    setConfig, setStartNode, setErrorRate,
+    setConfig, setStartNode, setErrorRate, setSlowFactor,
     toggleFailNode, toggleSlowEdge, clearFailures,
   } = useSimulationStore()
 
@@ -314,6 +314,23 @@ export default function SimulationPanel() {
                   {Math.round(config.failure.errorRate * 100)}%
                 </span>
               </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-gray-500 w-24 shrink-0" htmlFor="sim-slow-factor">
+                  Throttle
+                </label>
+                <input
+                  id="sim-slow-factor"
+                  type="range" min={1} max={10} step={1}
+                  value={config.failure.slowFactor}
+                  onChange={(e) => setSlowFactor(parseInt(e.target.value, 10))}
+                  disabled={isActive}
+                  className="flex-1"
+                />
+                <span className="text-xs text-gray-600 w-8 text-right">
+                  {config.failure.slowFactor}×
+                </span>
+              </div>
+
               <p className="text-[10px] text-gray-400">
                 Click a node on the canvas to mark it down — it gets a dashed red ring
                 and fails every request that reaches it. Click an edge to throttle it
