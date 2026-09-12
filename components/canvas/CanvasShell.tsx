@@ -1,13 +1,14 @@
 'use client'
 
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
-import { useDiagramPersistence } from '@/hooks/useDiagramPersistence'
 import Whiteboard from './Whiteboard'
 
-// This component uses ReactFlow hooks — must be inside ReactFlowProvider
-// The provider is placed at WhiteboardApp level so toolbar shares context
+// Uses ReactFlow hooks — must be inside ReactFlowProvider. The provider lives at
+// WhiteboardApp level so the toolbar shares context.
+//
+// Persistence deliberately does NOT live here: this component unmounts when the
+// user switches to LLD mode, which would silently stop autosave.
 export default function CanvasShell() {
   useKeyboardShortcuts()
-  useDiagramPersistence()
   return <Whiteboard />
 }

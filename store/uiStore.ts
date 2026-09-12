@@ -2,8 +2,14 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ComponentCategory, Provider, EdgeStylePreset } from '@/types/architecture'
-import type { BoardMode, LldLibraryTab } from '@/types/lld'
+import type {
+  ComponentCategory,
+  ConnectionType,
+  EdgeStylePreset,
+  Protocol,
+  Provider,
+} from '@/types/architecture'
+import type { BoardMode } from '@/types/lld'
 
 export type ActiveTool =
   | 'select'
@@ -33,7 +39,7 @@ const DEFAULT_EDGE_STYLE: EdgeStylePreset = {
   strokeColor: '#374151',
   strokeWidth: 1.5,
   strokeStyle: 'solid',
-  lineStyle: 'bezier',
+  lineStyle: 'smoothstep',
   startArrow: 'none',
   endArrow: 'arrowclosed',
   animated: false,
@@ -41,7 +47,6 @@ const DEFAULT_EDGE_STYLE: EdgeStylePreset = {
 
 interface UiState {
   boardMode: BoardMode
-  lldLibraryTab: LldLibraryTab
 
   // Panel state
   activePanel: ActivePanel
@@ -64,6 +69,13 @@ interface UiState {
 
   // Default style for new edges
   activeEdgeStyle: EdgeStylePreset
+
+  /**
+   * Connector preset armed from the HLD library. When set, a newly drawn
+   * connection uses it instead of the behaviour-inferred default.
+   */
+  armedConnectionType: ConnectionType | null
+  armedProtocol: Protocol | null
 
   // Library state
   activeCategory: ComponentCategory | Provider | 'all' | 'recent'
@@ -92,7 +104,6 @@ interface UiState {
 
   // Actions
   setBoardMode: (mode: BoardMode) => void
-  setLldLibraryTab: (tab: LldLibraryTab) => void
   setActivePanel: (panel: ActivePanel) => void
   setLibraryOpen: (open: boolean) => void
   setInspectorOpen: (open: boolean) => void
@@ -107,6 +118,7 @@ interface UiState {
   setDefaultFontSize: (v: number) => void
   setDefaultTextColor: (v: string) => void
   setActiveEdgeStyle: (style: Partial<EdgeStylePreset>) => void
+  setArmedConnection: (type: ConnectionType | null, protocol?: Protocol | null) => void
   setActiveCategory: (cat: ComponentCategory | Provider | 'all' | 'recent') => void
   setSearchQuery: (q: string) => void
   addRecentlyUsed: (componentId: string) => void
@@ -124,7 +136,6 @@ export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
       boardMode: 'hld',
-      lldLibraryTab: 'flowchart',
 
       activePanel: 'library',
       libraryOpen: true,
@@ -144,6 +155,8 @@ export const useUiStore = create<UiState>()(
       defaultTextColor: '#0f172a',
 
       activeEdgeStyle: DEFAULT_EDGE_STYLE,
+      armedConnectionType: null,
+      armedProtocol: null,
 
       activeCategory: 'all',
       searchQuery: '',
@@ -163,7 +176,6 @@ export const useUiStore = create<UiState>()(
           searchQuery: '',
           activeCategory: 'all',
         }),
-      setLldLibraryTab: (lldLibraryTab) => set({ lldLibraryTab }),
       setActivePanel: (activePanel) => set({ activePanel }),
       setLibraryOpen: (libraryOpen) => set({ libraryOpen }),
       setInspectorOpen: (inspectorOpen) => set({ inspectorOpen }),
@@ -179,6 +191,8 @@ export const useUiStore = create<UiState>()(
       setDefaultTextColor: (defaultTextColor) => set({ defaultTextColor }),
       setActiveEdgeStyle: (style) =>
         set((state) => ({ activeEdgeStyle: { ...state.activeEdgeStyle, ...style } })),
+      setArmedConnection: (armedConnectionType, armedProtocol = null) =>
+        set({ armedConnectionType, armedProtocol }),
       setActiveCategory: (activeCategory) => set({ activeCategory }),
       setSearchQuery: (searchQuery) => set({ searchQuery }),
       addRecentlyUsed: (componentId) =>
@@ -200,7 +214,6 @@ export const useUiStore = create<UiState>()(
       name: 'archboard-ui-v2',
       partialize: (state: UiState) => ({
         boardMode: state.boardMode,
-        lldLibraryTab: state.lldLibraryTab,
         recentlyUsed: state.recentlyUsed,
         theme: state.theme,
         libraryOpen: state.libraryOpen,

@@ -156,6 +156,13 @@ export interface ArchitectureEdgeData extends Record<string, unknown> {
   label?: string
   animated?: boolean
   edgeLineStyle?: EdgeLineStyle
+  /**
+   * Manual nudge from the edge's natural midpoint, in canvas units.
+   *
+   * Stored relative to the midpoint so it survives the nodes being moved. Used to
+   * pull apart edges that share a node pair and would otherwise overlap.
+   */
+  offset?: ShapePoint
   metadata?: Record<string, unknown>
 }
 

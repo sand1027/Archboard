@@ -14,6 +14,7 @@ import {
 } from '@xyflow/react'
 import type { ArchitectureNode, ArchitectureEdge, BoardMode, BoardSnapshot } from '@/types/diagram'
 import type { Viewport } from '@/types/architecture'
+import { normaliseNodesConnectable } from '@/lib/canvas/nodeConnectivity'
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -49,6 +50,13 @@ interface DiagramState {
   activeBoard: BoardMode
   boards: { hld: BoardSnapshot; lld: BoardSnapshot }
 
+  /**
+   * The active board's own id, minted locally by `emptyBoard()`.
+   *
+   * NOT the `diagrams.id` row id. For links and API calls use the route param
+   * (see hooks/useDiagramRouteId) — building a URL from this field produces a
+   * path that 404s.
+   */
   diagramId: string
   diagramName: string
   nodes: ArchitectureNode[]
@@ -284,7 +292,9 @@ export const useDiagramStore = create<DiagramState>()(
       set({
         diagramId: id ?? generateId(),
         diagramName: name,
-        nodes,
+        // Templates and imported JSON arrive here without passing through
+        // migrateDocument, so normalise connectivity at this door too.
+        nodes: normaliseNodesConnectable(nodes),
         edges,
         viewport: viewport ?? { x: 0, y: 0, zoom: 1 },
         selectedNodeIds: [],
@@ -338,7 +348,7 @@ export const useDiagramStore = create<DiagramState>()(
         activeBoard: mode,
         diagramId: next.diagramId,
         diagramName: next.diagramName,
-        nodes: next.nodes,
+        nodes: normaliseNodesConnectable(next.nodes),
         edges: next.edges,
         viewport: next.viewport,
         selectedNodeIds: [],
@@ -353,7 +363,7 @@ export const useDiagramStore = create<DiagramState>()(
         boards,
         diagramId: current.diagramId,
         diagramName: current.diagramName,
-        nodes: current.nodes,
+        nodes: normaliseNodesConnectable(current.nodes),
         edges: current.edges,
         viewport: current.viewport,
         selectedNodeIds: [],

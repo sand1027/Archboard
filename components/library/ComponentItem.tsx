@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 import Image from 'next/image'
 import type { ArchitectureComponent } from '@/types/architecture'
+import { DND_MIME, setDragPayload } from '@/lib/canvas/dnd'
 
 interface ComponentItemProps {
   component: ArchitectureComponent
@@ -15,8 +16,7 @@ export default function ComponentItem({ component, onAdd }: ComponentItemProps) 
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
-      e.dataTransfer.effectAllowed = 'copy'
-      e.dataTransfer.setData('application/archboard-component', component.id)
+      setDragPayload(e, DND_MIME.hldComponent, component.id)
       if (dragImageRef.current) {
         e.dataTransfer.setDragImage(dragImageRef.current, 20, 20)
       }

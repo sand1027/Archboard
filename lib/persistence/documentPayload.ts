@@ -1,0 +1,272 @@
+/**
+ * The Archboard document: one shape, one migration path, one place.
+ *
+ * Before this module the "boards vs legacy flat" hydration branch was written
+ * three times (useDiagramPersistence, DiagramEditor, HistorySidebar) and could
+ * drift. Everything now funnels through migrateDocument + applyDocument.
+ *
+ * Storage is unchanged: diagrams.data is a single jsonb column, so adding LLD
+ * workspaces needs no schema migration.
+ */
+
+import { useDiagramStore } from '@/store/diagramStore'
+import { useLldStore } from '@/store/lldStore'
+import { useUiStore } from '@/store/uiStore'
+import { generateId } from '@/lib/canvas/ids'
+import { normaliseNodesConnectable } from '@/lib/canvas/nodeConnectivity'
+import type { BoardMode, BoardSnapshot } from '@/types/diagram'
+import type { LldWorkspace } from '@/types/lld'
+
+export const DOCUMENT_VERSION = 3
+
+export interface ArchboardDocument {
+  version: number
+  activeBoard: BoardMode
+  boards: { hld: BoardSnapshot; lld: BoardSnapshot }
+  /** Keyed by HLD componentId. */
+  lldWorkspaces: Record<string, LldWorkspace>
+}
+
+export function emptyBoard(name: string): BoardSnapshot {
+  return {
+    diagramId: generateId(),
+    diagramName: name,
+    nodes: [],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  }
+}
+
+/** Snapshot both stores into a persistable document. */
+export function buildDocument(): ArchboardDocument {
+  const { activeBoard, boards } = useDiagramStore.getState().getPersistPayload()
+  return {
+    version: DOCUMENT_VERSION,
+    activeBoard,
+    boards,
+    lldWorkspaces: useLldStore.getState().getPersistPayload(),
+  }
+}
+
+/**
+ * Normalise any historical payload shape into the current one.
+ *
+ * Handles, in order:
+ *   v3  { version, activeBoard, boards, lldWorkspaces }  → pass through
+ *   v2  { activeBoard, boards }                          → add empty workspaces
+ *   v1  { nodes, edges, viewport }                       → wrap as boards.hld
+ *
+ * Returns null when the input carries no recoverable diagram content, so the
+ * caller can fall back to defaults rather than clobbering good state.
+ */
+export function migrateDocument(raw: unknown): ArchboardDocument | null {
+  if (!isRecord(raw)) return null
+
+  // v2 / v3 — board-shaped.
+  if (isRecord(raw.boards) && (isRecord(raw.boards.hld) || isRecord(raw.boards.lld))) {
+    const activeBoard: BoardMode = raw.activeBoard === 'lld' ? 'lld' : 'hld'
+    return {
+      version: DOCUMENT_VERSION,
+      activeBoard,
+      boards: {
+        hld: normaliseBoard(raw.boards.hld, 'Untitled Diagram', 'hld'),
+        lld: normaliseBoard(raw.boards.lld, 'Untitled LLD', 'lld'),
+      },
+      lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
+    }
+  }
+
+  // v1 — flat legacy diagram.
+  if (Array.isArray(raw.nodes) && Array.isArray(raw.edges)) {
+    return {
+      version: DOCUMENT_VERSION,
+      activeBoard: 'hld',
+      boards: {
+        hld: {
+          diagramId: str(raw.id) ?? generateId(),
+          diagramName: str(raw.name) ?? 'Untitled Diagram',
+          nodes: raw.nodes as BoardSnapshot['nodes'],
+          edges: raw.edges as BoardSnapshot['edges'],
+          viewport: normaliseViewport(raw.viewport),
+        },
+        lld: emptyBoard('Untitled LLD'),
+      },
+      lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
+    }
+  }
+
+  return null
+}
+
+/** Push a document into both stores plus the UI board mode. */
+export function applyDocument(doc: ArchboardDocument): void {
+  useDiagramStore.getState().hydrateBoards({
+    activeBoard: doc.activeBoard,
+    boards: doc.boards,
+  })
+  useLldStore.getState().hydrate(doc.lldWorkspaces)
+  useUiStore.getState().setBoardMode(doc.activeBoard)
+}
+
+/** Convenience for the common "parse unknown, apply if usable" flow. */
+export function applyRawDocument(raw: unknown): boolean {
+  const doc = migrateDocument(raw)
+  if (!doc) return false
+  applyDocument(doc)
+  return true
+}
+
+/** Drop workspaces whose HLD component no longer exists. */
+export function orphanedWorkspaceIds(
+  workspaces: Record<string, LldWorkspace>,
+  hldNodeIds: Set<string>
+): string[] {
+  return Object.values(workspaces)
+    .filter((ws) => ws.componentId !== undefined && !hldNodeIds.has(ws.componentId))
+    .map((ws) => ws.scopeId)
+}
+
+// ─── normalisers ─────────────────────────────────────────────────────────────
+
+function normaliseBoard(
+  input: unknown,
+  fallbackName: string,
+  board: BoardMode
+): BoardSnapshot {
+  if (!isRecord(input)) return emptyBoard(fallbackName)
+  return {
+    diagramId: str(input.diagramId) ?? generateId(),
+    diagramName: str(input.diagramName) ?? fallbackName,
+    nodes: Array.isArray(input.nodes)
+      ? normaliseNodesConnectable(input.nodes as BoardSnapshot['nodes'])
+      : [],
+    // Only the HLD board's handles changed shape; the legacy LLD board still
+    // uses paired handles, so leave its edges alone.
+    edges: Array.isArray(input.edges)
+      ? board === 'hld'
+        ? migrateEdges(input.edges)
+        : (input.edges as BoardSnapshot['edges'])
+      : [],
+    viewport: normaliseViewport(input.viewport),
+  }
+}
+
+
+function normaliseViewport(input: unknown): BoardSnapshot['viewport'] {
+  if (!isRecord(input)) return { x: 0, y: 0, zoom: 1 }
+  return {
+    x: num(input.x) ?? 0,
+    y: num(input.y) ?? 0,
+    zoom: num(input.zoom) ?? 1,
+  }
+}
+
+function normaliseWorkspaces(input: unknown): Record<string, LldWorkspace> {
+  if (!isRecord(input)) return {}
+
+  const out: Record<string, LldWorkspace> = {}
+  for (const [scopeId, value] of Object.entries(input)) {
+    if (!isRecord(value) || !Array.isArray(value.diagrams)) continue
+
+    const diagrams = value.diagrams.filter(
+      (d): d is LldWorkspace['diagrams'][number] =>
+        isRecord(d) && typeof d.id === 'string' && Array.isArray(d.shapes) && Array.isArray(d.edges)
+    )
+
+    const now = new Date().toISOString()
+    out[scopeId] = {
+      id: str(value.id) ?? scopeId,
+      scopeId: str(value.scopeId) ?? scopeId,
+      componentId: str(value.componentId),
+      diagramId: str(value.diagramId) ?? '',
+      title: str(value.title) ?? str(value.componentLabel) ?? 'Low-level design',
+      diagrams,
+      activeDiagramId:
+        typeof value.activeDiagramId === 'string' &&
+        diagrams.some((d) => d.id === value.activeDiagramId)
+          ? value.activeDiagramId
+          : (diagrams[0]?.id ?? null),
+      createdAt: str(value.createdAt) ?? now,
+      updatedAt: str(value.updatedAt) ?? now,
+    }
+  }
+  return out
+}
+
+/**
+ * Architecture nodes briefly carried paired handles per side (`t` source over
+ * `t-in` target). They now expose one handle per side, since the canvas runs in
+ * ConnectionMode.Loose. Edges still pointing at a `-in` handle would reference a
+ * node that no longer exists and silently stop rendering, so rewrite them.
+ */
+function migrateEdges(edges: unknown[]): BoardSnapshot['edges'] {
+  return edges.map((edge) => {
+    if (!isRecord(edge)) return edge as BoardSnapshot['edges'][number]
+
+    const source = stripLegacyInHandle(edge.sourceHandle)
+    const target = stripLegacyInHandle(edge.targetHandle)
+    const data = stripAutoLineStyle(edge.data)
+
+    if (
+      source === edge.sourceHandle &&
+      target === edge.targetHandle &&
+      data === edge.data
+    ) {
+      return edge as BoardSnapshot['edges'][number]
+    }
+
+    return {
+      ...edge,
+      sourceHandle: source,
+      targetHandle: target,
+      data,
+    } as BoardSnapshot['edges'][number]
+  })
+}
+
+/**
+ * `t-in` → `t`, and drop anything unresolvable.
+ *
+ * The `body` handle covers a whole icon but only mounts while a connector preset
+ * is armed. An edge that stored it becomes unanchored the moment the preset is
+ * cleared: React Flow cannot find the handle, so the endpoint collapses toward
+ * the canvas origin and the edge renders as a long curve to nowhere. Clearing the
+ * id lets the edge fall back to floating geometry, which is always resolvable.
+ */
+function stripLegacyInHandle(handle: unknown): unknown {
+  if (typeof handle !== 'string') return handle
+  if (handle === 'body') return undefined
+
+  const match = /^([trbl])-in$/.exec(handle)
+  if (match) return match[1]
+
+  // Side handles are the only ids architecture nodes expose.
+  return /^[trbl]$/.test(handle) ? handle : undefined
+}
+
+/**
+ * Drop an `edgeLineStyle` of 'bezier' that was stamped automatically.
+ *
+ * Every connection used to inherit the default edge preset, which was 'bezier',
+ * so the field records a default rather than a decision. Clearing it lets the
+ * edge follow the notation table's orthogonal routing. Any other value was picked
+ * deliberately in the inspector and is preserved.
+ */
+function stripAutoLineStyle(data: unknown): unknown {
+  if (!isRecord(data)) return data
+  if (data.edgeLineStyle !== 'bezier') return data
+  const { edgeLineStyle: _drop, ...rest } = data
+  return rest
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' && v ? v : undefined
+}
+
+function num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined
+}

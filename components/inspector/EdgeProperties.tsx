@@ -8,6 +8,34 @@ import type { ArchitectureEdge } from '@/types/diagram'
 import type { Protocol, ConnectionType, RelationKind } from '@/types/architecture'
 import { useUiStore } from '@/store/uiStore'
 
+/** Routing choices, previewed as the shape each one actually draws. */
+const ROUTING_OPTIONS = [
+  {
+    value: 'smoothstep' as const,
+    label: 'Step',
+    title: 'Right angles with rounded corners',
+    preview: 'M2 13 H11 Q13 13 13 11 V5 Q13 3 15 3 H26',
+  },
+  {
+    value: 'step' as const,
+    label: 'Sharp',
+    title: 'Right angles, square corners',
+    preview: 'M2 13 H13 V3 H26',
+  },
+  {
+    value: 'straight' as const,
+    label: 'Direct',
+    title: 'Straight line between endpoints',
+    preview: 'M2 13 L26 3',
+  },
+  {
+    value: 'bezier' as const,
+    label: 'Curve',
+    title: 'Curved line',
+    preview: 'M2 13 C10 13 18 3 26 3',
+  },
+]
+
 const PROTOCOLS: Protocol[] = [
   'HTTP', 'HTTPS', 'TCP', 'UDP', 'gRPC',
   'WebSocket', 'SSE', 'REST', 'GraphQL', 'Kafka', 'AMQP', 'MQTT',
@@ -138,6 +166,42 @@ export default function EdgeProperties({ edge }: EdgePropertiesProps) {
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
               focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800"
           />
+        </div>
+
+        {/* Routing was previously fixed at bezier with no way to change it. */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Routing</label>
+          <div className="grid grid-cols-4 gap-1">
+            {ROUTING_OPTIONS.map((option) => {
+              const active = (edge.data?.edgeLineStyle ?? 'smoothstep') === option.value
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  title={option.title}
+                  onClick={() => handleUpdate({ edgeLineStyle: option.value })}
+                  className={[
+                    'flex flex-col items-center gap-1 rounded-lg border px-1 py-1.5 transition-all',
+                    active
+                      ? 'border-blue-300 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300',
+                  ].join(' ')}
+                >
+                  <svg width="28" height="16" viewBox="0 0 28 16" aria-hidden="true">
+                    <path
+                      d={option.preview}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <span className="text-[9px] font-medium leading-none">{option.label}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {!isLld && (

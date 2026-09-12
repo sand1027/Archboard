@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation'
 import { useReactFlow } from '@xyflow/react'
 import { createClient } from '@/lib/supabase/client'
 import { useDiagramStore } from '@/store/diagramStore'
+import LldComponentPicker from '@/components/lld/LldComponentPicker'
 import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
 
@@ -30,6 +31,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
   const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen } =
     useUiStore()
   const reactFlow = useReactFlow()
+  const [lldPickerOpen, setLldPickerOpen] = useState(false)
   const router = useRouter()
   const [editingName, setEditingName] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
@@ -58,6 +60,8 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
 
   const mode = activeBoard ?? boardMode
 
+  // One state change drives both the canvas and the sidebar. setBoardMode is
+  // kept in step for the components that still read it.
   const handleModeSwitch = useCallback(
     (next: 'hld' | 'lld') => {
       if (next === mode) return
@@ -346,6 +350,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
           </>
         )}
       </div>
+      {lldPickerOpen && <LldComponentPicker onClose={() => setLldPickerOpen(false)} />}
     </header>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useState, useRef } from 'react'
 import { useDiagramStore } from '@/store/diagramStore'
+import { buildDocument } from '@/lib/persistence/documentPayload'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -16,13 +17,13 @@ export function useDiagramSync(diagramId: string) {
     setSaveStatus('saving')
 
     try {
-      const state = useDiagramStore.getState()
-      const payload = state.getPersistPayload()
+      const name = useDiagramStore.getState().diagramName
+      const payload = buildDocument()
 
       const res = await fetch(`/api/diagrams/${diagramId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: state.diagramName, data: payload }),
+        body: JSON.stringify({ name, data: payload }),
       })
       if (!res.ok) throw new Error('Save failed')
 
@@ -37,8 +38,7 @@ export function useDiagramSync(diagramId: string) {
   }, [diagramId])
 
   const saveVersion = useCallback(async (versionName: string, thumbnailUrl?: string) => {
-    const state = useDiagramStore.getState()
-    const payload = state.getPersistPayload()
+    const payload = buildDocument()
 
     const res = await fetch(`/api/diagrams/${diagramId}/versions`, {
       method: 'POST',

@@ -288,6 +288,10 @@ const DEFAULT_W = 160
 const DEFAULT_H = 100
 
 function ShapeNode({ id, data, selected, width, height }: NodeProps<ShapeNodeType>) {
+  // Deterministic handle visibility. `group-hover:` depends on an ancestor
+  // carrying `group`, which is easy to break from outside this file.
+  const [hovered, setHovered] = useState(false)
+  const handlesVisible = hovered || !!selected
   const { updateNode } = useDiagramStore()
   const { getZoom } = useReactFlow()
   const [editing, setEditing] = useState(false)
@@ -509,6 +513,8 @@ function ShapeNode({ id, data, selected, width, height }: NodeProps<ShapeNodeTyp
         cursor: isText && !editing ? 'grab' : editing ? 'text' : undefined,
       }}
       onDoubleClick={startEdit}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       {...(isText
         ? {
             onPointerDown: onTextNodePointerDown,
@@ -528,16 +534,41 @@ function ShapeNode({ id, data, selected, width, height }: NodeProps<ShapeNodeTyp
         />
       )}
 
+      {/*
+        Connection points, four per side.
+
+        The ids matter: React Flow cannot tell same-type handles apart without
+        them, so eight unnamed handles all resolved to the first one and every
+        edge left from the top no matter which dot you dragged.
+      */}
       {!linear && !isText && (
         <>
-          <Handle type="source" position={Position.Top}    className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="source" position={Position.Right}  className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="source" position={Position.Left}   className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="target" position={Position.Top}    className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="target" position={Position.Right}  className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="target" position={Position.Bottom} className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
-          <Handle type="target" position={Position.Left}   className="!w-2 !h-2 !bg-blue-500 !border-white !opacity-0 group-hover:!opacity-100 !transition-opacity" />
+          {(
+            [
+              [Position.Top, 't'],
+              [Position.Right, 'r'],
+              [Position.Bottom, 'b'],
+              [Position.Left, 'l'],
+            ] as const
+          ).map(([position, hid]) => (
+            <div key={hid}>
+              <Handle
+                type="target"
+                id={`${hid}-in`}
+                position={position}
+                className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !transition-opacity"
+                style={{ opacity: handlesVisible ? 1 : 0, zIndex: 20 }}
+              />
+              <Handle
+                type="source"
+                id={hid}
+                position={position}
+                title="Drag to connect"
+                className="!w-2.5 !h-2.5 !bg-blue-500 !border-2 !border-white !transition-opacity"
+                style={{ opacity: handlesVisible ? 1 : 0, zIndex: 21 }}
+              />
+            </div>
+          ))}
         </>
       )}
 

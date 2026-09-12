@@ -4,6 +4,7 @@ import { useState, useEffect, useTransition } from 'react'
 import { X, Clock, RotateCcw, Loader2, Save, FileText } from 'lucide-react'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
+import { applyRawDocument } from '@/lib/persistence/documentPayload'
 import type { DiagramVersionRow } from '@/lib/supabase/types'
 
 interface Props {
@@ -63,21 +64,9 @@ export default function HistorySidebar({ diagramId, onClose, onSaveVersion }: Pr
       const { nodes: n, edges: e } = useDiagramStore.getState()
       useHistoryStore.getState().pushSnapshot({ nodes: n, edges: e })
 
-      // Restore
-      const data = full.data as any
-      const activeBoard = data.activeBoard ?? 'hld'
-      const boards = data.boards ?? {}
-      if (boards.hld || boards.lld) {
-        useDiagramStore.getState().hydrateBoards({ activeBoard, boards })
-      } else if (data.nodes && data.edges) {
-        useDiagramStore.getState().loadDiagram({
-          id: diagramId,
-          name: version.name,
-          nodes: data.nodes,
-          edges: data.edges,
-          viewport: data.viewport,
-        })
-      }
+      // Restore both boards and LLD workspaces from whatever shape the
+      // snapshot was saved in.
+      applyRawDocument(full.data)
     })
   }
 
