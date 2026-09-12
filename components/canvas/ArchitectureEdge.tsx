@@ -48,12 +48,6 @@ const RELATION_STYLES: Partial<
   'message-return': { strokeDasharray: '4,3', end: MarkerType.Arrow },
 }
 
-// Sim colors per packet — must match engine.ts PACKET_COLORS
-const SIM_COLORS = [
-  '#3B82F6','#10B981','#F59E0B','#8B5CF6',
-  '#EF4444','#0EA5E9','#F97316','#EC4899',
-]
-
 /** Label band height on architecture nodes; see ArchitectureNode. */
 const ARCH_LABEL_H = 20
 
@@ -88,6 +82,11 @@ function ArchitectureEdgeComponent({
     const pkt = s.packets.find((p) => p.edgeId === id)
     return pkt?.color ?? null
   })
+  // The marching dashes should keep pace with the packets they sit under.
+  const simSpeed      = useSimulationStore((s) => s.config.speedMultiplier)
+  // Marked slow for failure injection. Config rather than run state, so like the
+  // node's down badge it shows whether or not a simulation is going.
+  const markedSlow    = useSimulationStore((s) => s.config.failure.slowEdges.has(id))
 
   const isSimulating = simStatus === 'running' || simStatus === 'paused'
   const simColor = isActive ? packetColor : null
@@ -131,6 +130,19 @@ function ArchitectureEdgeComponent({
       strokeDash  = undefined
       opacity = 0.35
     }
+  } else if (isFailed) {
+    // Keep the break visible after the run ends. Reverting to normal styling the
+    // moment the status flips to 'finished' threw away the one thing the user was
+    // running a failure injection to see. Cleared by the next run's reset.
+    strokeColor = '#EF4444'
+    strokeWidth = 2
+    strokeDash = '4,3'
+  } else if (markedSlow) {
+    // Degraded link, marked but not yet exercised. Amber and dashed so it reads as
+    // "throttled here" at a glance rather than only appearing in the panel's list.
+    strokeColor = '#F97316'
+    strokeWidth = 2.5
+    strokeDash = '7,4'
   } else {
     strokeColor = selected ? '#3B82F6' : (inlineStyle?.stroke as string) ?? semantic.stroke
     strokeWidth = ((inlineStyle?.strokeWidth as number) ?? semantic.strokeWidth) + (selected ? 0.5 : 0)
@@ -211,6 +223,11 @@ function ArchitectureEdgeComponent({
     strokeDasharray: isActive ? undefined : strokeDash,   // class handles dash when active
     opacity,
     transition: isSimulating ? 'stroke 0.15s, opacity 0.15s' : undefined,
+    // Consumed by .sim-edge-active in globals.css. A fixed 0.5s made the dashes
+    // crawl at 4x playback and blur at 0.25x.
+    ...(isActive
+      ? ({ '--sim-flow-duration': `${(0.5 / Math.max(simSpeed, 0.1)).toFixed(3)}s` } as React.CSSProperties)
+      : null),
   }
 
   const displayLabel =

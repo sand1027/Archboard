@@ -17,15 +17,40 @@
  */
 
 import type { ArchitectureNode, ArchitectureEdge } from '@/types/diagram'
-import type { SimPacket, SimLogEntry, NodeStat, SimConfig } from '@/types/simulation'
+import type {
+  SimPacket,
+  SimLogEntry,
+  SimConfig,
+  NodeSimStatus,
+} from '@/types/simulation'
 import { useSimulationStore } from '@/store/simulationStore'
 import { useDiagramStore } from '@/store/diagramStore'
+import {
+  advanceProgress,
+  dispatchIntervalMs,
+  hopDurationMs,
+  hopLatencyMs,
+} from './timing'
+import { decideFailure, failureLabel, isSlowEdge } from './failure'
+import {
+  MAX_LIVE_PACKETS,
+  buildGraph,
+  hasOutgoing,
+  nextHops,
+  readDataString,
+  type Graph,
+} from './traversal'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const BASE_EDGE_PX    = 200   // notional edge length (px) — affects travel time
-const BASE_LATENCY_MS = 20    // base one-hop latency (ms)
-const FRAME_MS        = 16    // ~60fps
+/** Fallback edge length when node geometry is unavailable. */
+const FALLBACK_EDGE_PX = 200
+
+/** Reported one-hop latency. A statistic, not a playback duration — see timing.ts. */
+const BASE_LATENCY_MS = 20
+
+/** Average hop latency above which a node is called a bottleneck. */
+const BOTTLENECK_MS = 200
 
 const PACKET_COLORS = [
   '#3B82F6', // blue
@@ -45,76 +70,11 @@ function uid(): string {
 }
 
 function nodeLabel(nodes: ArchitectureNode[], id: string): string {
-  const n = nodes.find((n) => n.id === id)
-  if (!n) return id.slice(0, 8)
-  const d = n.data as any
-  return d?.label ?? d?.name ?? id.slice(0, 8)
-}
-
-// Build adjacency list: nodeId → [{ edgeId, targetId }]
-function buildGraph(edges: ArchitectureEdge[]): Map<string, { edgeId: string; targetId: string }[]> {
-  const graph = new Map<string, { edgeId: string; targetId: string }[]>()
-  for (const e of edges) {
-    if (!graph.has(e.source)) graph.set(e.source, [])
-    graph.get(e.source)!.push({ edgeId: e.id, targetId: e.target })
-    // Bidirectional edges also go the other way
-    const d = e.data as any
-    if (d?.connectionType === 'bidirectional') {
-      if (!graph.has(e.target)) graph.set(e.target, [])
-      graph.get(e.target)!.push({ edgeId: e.id, targetId: e.source })
-    }
-  }
-  return graph
-}
-
-// BFS: find all simple paths from start up to maxDepth hops
-function findPaths(
-  graph: Map<string, { edgeId: string; targetId: string }[]>,
-  start: string,
-  maxDepth = 12,
-): string[][] {
-  const paths: string[][] = []
-  const queue: { path: string[]; visited: Set<string> }[] = [
-    { path: [start], visited: new Set([start]) },
-  ]
-
-  while (queue.length > 0) {
-    const { path, visited } = queue.shift()!
-    const current = path[path.length - 1]
-    const neighbours = graph.get(current) ?? []
-
-    if (neighbours.length === 0 || path.length >= maxDepth) {
-      if (path.length > 1) paths.push(path)
-      continue
-    }
-
-    let extended = false
-    for (const { targetId } of neighbours) {
-      if (visited.has(targetId)) continue
-      extended = true
-      const newVisited = new Set(visited)
-      newVisited.add(targetId)
-      queue.push({ path: [...path, targetId], visited: newVisited })
-    }
-    if (!extended && path.length > 1) paths.push(path)
-  }
-
-  // Sort by length — prefer longer paths for better visualisation
-  return paths.sort((a, b) => b.length - a.length)
-}
-
-// Given a path (node IDs), return the edge IDs connecting each hop
-function pathToEdges(
-  graph: Map<string, { edgeId: string; targetId: string }[]>,
-  path: string[],
-): string[] {
-  const edgeIds: string[] = []
-  for (let i = 0; i < path.length - 1; i++) {
-    const neighbours = graph.get(path[i]) ?? []
-    const hop = neighbours.find((n) => n.targetId === path[i + 1])
-    if (hop) edgeIds.push(hop.edgeId)
-  }
-  return edgeIds
+  const node = nodes.find((n) => n.id === id)
+  if (!node) return id.slice(0, 8)
+  return (
+    readDataString(node.data, 'label') ?? readDataString(node.data, 'name') ?? id.slice(0, 8)
+  )
 }
 
 // ─── Engine class ─────────────────────────────────────────────────────────────
@@ -123,12 +83,28 @@ class SimulationEngine {
   private rafId: number | null = null
   private lastTime = 0
   private requestIndex = 0
-  private paths: string[][] = []
-  private pathEdges: string[][] = []
-  private graph = new Map<string, { edgeId: string; targetId: string }[]>()
+  private graph: Graph = new Map()
   private activePackets: SimPacket[] = []
-  private pendingRequests = 0
   private dispatchInterval: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * Live branch count per request.
+   *
+   * A request fans out, so it is not finished when one packet arrives somewhere —
+   * it is finished when its last branch runs out of downstreams. A single
+   * `pendingRequests` counter could not express that.
+   */
+  private branches = new Map<number, { live: number; failed: boolean }>()
+
+  /**
+   * Every pending node-pulse timeout.
+   *
+   * These used to be fire-and-forget. A reset left them queued, so a few hundred
+   * milliseconds later they would write node statuses back onto an idle canvas,
+   * and stop()'s own cleanup timer could wipe the highlights of a run the user had
+   * already restarted.
+   */
+  private timers = new Set<ReturnType<typeof setTimeout>>()
 
   // ─── Public lifecycle ───────────────────────────────────────────────────────
 
@@ -144,20 +120,17 @@ class SimulationEngine {
     const { config } = sim
 
     this.graph = buildGraph(edges)
-    this.paths = findPaths(this.graph, config.startNodeId)
 
-    if (this.paths.length === 0) {
-      // No paths — just animate a single-node pulse
+    if (!hasOutgoing(this.graph, config.startNodeId)) {
+      // Nowhere to go — just animate a single-node pulse
       useSimulationStore.getState().setNodeStatus(config.startNodeId, 'active')
-      setTimeout(() => {
+      this._later(() => {
         useSimulationStore.getState().clearNodeStatus(config.startNodeId)
         useSimulationStore.getState().setStatus('finished')
       }, 1000)
       useSimulationStore.getState().setStatus('running')
       return
     }
-
-    this.pathEdges = this.paths.map((p) => pathToEdges(this.graph, p))
 
     useSimulationStore.getState().setStatus('running')
     useSimulationStore.getState().updateStats({ startedAt: Date.now() })
@@ -168,12 +141,16 @@ class SimulationEngine {
       this.dispatchInterval = setInterval(() => {
         const state = useSimulationStore.getState()
         if (state.status !== 'running') { this._clearInterval(); return }
-        if (state.stats.totalRequests >= config.maxRequests) {
+        if (state.stats.totalRequests >= state.config.maxRequests) {
           this._clearInterval()
           return
         }
-        this._dispatchBatch(nodes, edges, config)
-      }, 800 / config.speedMultiplier)
+        // Re-read the diagram: a load test can outlive the layout it started with,
+        // and _tick already reads fresh state every frame. Capturing nodes/edges
+        // here made newly spawned requests traverse a stale graph.
+        const live = useDiagramStore.getState()
+        this._dispatchBatch(live.nodes, live.edges, state.config)
+      }, dispatchIntervalMs(config.speedMultiplier))
     }
 
     this.lastTime = performance.now()
@@ -195,10 +172,16 @@ class SimulationEngine {
   stop() {
     this._clearRaf()
     this._clearInterval()
+    this._clearTimers()
+    this.activePackets = []
     useSimulationStore.getState().finaliseStats()
     useSimulationStore.getState().setStatus('finished')
+    // Packets in flight when the user hits stop have nowhere to go. Left in the
+    // store they freeze mid-edge, and the edge styling has already reverted to its
+    // normal look around them.
+    useSimulationStore.getState().setPackets([])
     // Clear all node statuses after a beat
-    setTimeout(() => {
+    this._later(() => {
       Object.keys(useSimulationStore.getState().nodeStatuses).forEach((id) =>
         useSimulationStore.getState().clearNodeStatus(id)
       )
@@ -209,9 +192,10 @@ class SimulationEngine {
   reset() {
     this._clearRaf()
     this._clearInterval()
+    this._clearTimers()
     this.requestIndex = 0
     this.activePackets = []
-    this.pendingRequests = 0
+    this.branches.clear()
     useSimulationStore.getState().reset()
   }
 
@@ -237,60 +221,129 @@ class SimulationEngine {
     edges: ArchitectureEdge[],
     config: SimConfig,
   ) {
-    if (this.paths.length === 0) return
+    const start = config.startNodeId
+    const trail = [start]
+    const hops = nextHops(this.graph, start, trail)
+    if (hops.length === 0) return
 
     const idx = this.requestIndex++
-    const pathIdx = idx % this.paths.length
-    const path = this.paths[pathIdx]
-    const edgeIds = this.pathEdges[pathIdx]
-
-    if (edgeIds.length === 0) return
-
     const color = PACKET_COLORS[idx % PACKET_COLORS.length]
-    const firstEdgeId = edgeIds[0]
-    const firstEdge = edges.find((e) => e.id === firstEdgeId)
-    if (!firstEdge) return
 
     useSimulationStore.getState().updateStats({
       totalRequests: useSimulationStore.getState().stats.totalRequests + 1,
     })
 
     // Pulse start node
-    useSimulationStore.getState().setNodeStatus(path[0], 'active')
-    setTimeout(() => useSimulationStore.getState().clearNodeStatus(path[0]), 400)
+    useSimulationStore.getState().setNodeStatus(start, 'active')
+    this._later(() => useSimulationStore.getState().clearNodeStatus(start), 400)
 
-    const packet: SimPacket = {
-      id: uid(),
-      edgeId: firstEdgeId,
-      sourceId: firstEdge.source,
-      targetId: firstEdge.target,
-      progress: 0,
-      speed: this._packetSpeed(firstEdgeId, config),
-      status: 'travelling',
-      requestIndex: idx,
-      startTime: performance.now(),
-      path,
-      pathStep: 0,
-      color,
+    // One branch per outgoing edge. A client wired to both a CDN and a load
+    // balancer exercises both, rather than whichever happened to head the sorted
+    // path list.
+    for (const hop of hops) {
+      const packet = this._makePacket(idx, color, start, hop, trail, nodes, edges, config)
+      if (packet) this.activePackets.push(packet)
     }
-
-    this.activePackets.push(packet)
-    this.pendingRequests++
   }
 
-  private _packetSpeed(edgeId: string, config: SimConfig): number {
-    const base = (BASE_EDGE_PX / (BASE_LATENCY_MS / 1000)) * config.speedMultiplier
-    if (config.failure.slowEdges.has(edgeId)) {
-      return base / config.failure.slowFactor
+  /**
+   * Build a packet for one hop, and register it as a live branch of its request.
+   *
+   * Returns null when the edge has gone missing between planning and spawning, in
+   * which case no branch is registered and nothing leaks.
+   */
+  private _makePacket(
+    requestIndex: number,
+    color: string,
+    sourceId: string,
+    hop: { edgeId: string; targetId: string },
+    trail: readonly string[],
+    nodes: ArchitectureNode[],
+    edges: ArchitectureEdge[],
+    config: SimConfig,
+  ): SimPacket | null {
+    const edge = edges.find((e) => e.id === hop.edgeId)
+    if (!edge) return null
+
+    const existing = this.branches.get(requestIndex)
+    if (existing) existing.live++
+    else this.branches.set(requestIndex, { live: 1, failed: false })
+
+    return {
+      id: uid(),
+      edgeId: hop.edgeId,
+      sourceId,
+      targetId: hop.targetId,
+      progress: 0,
+      durationMs: this._hopDuration(
+        hop.edgeId,
+        this._edgeLength(edge, nodes),
+        config
+      ),
+      status: 'travelling',
+      requestIndex,
+      startTime: performance.now(),
+      trail: [...trail, hop.targetId],
+      color,
     }
-    return base
+  }
+
+  /**
+   * Retire one branch of a request, and count the request itself once its last
+   * branch has finished.
+   *
+   * Counted per request rather than per branch, so the totals still add up: a
+   * request that fans out to four downstreams is one request, and it lands in
+   * `failedRequests` if any branch failed, `completedRequests` otherwise.
+   */
+  private _endBranch(requestIndex: number, failed: boolean) {
+    const entry = this.branches.get(requestIndex)
+    if (!entry) return
+
+    entry.live--
+    if (failed) entry.failed = true
+    if (entry.live > 0) return
+
+    this.branches.delete(requestIndex)
+    const stats = useSimulationStore.getState().stats
+    useSimulationStore.getState().updateStats(
+      entry.failed
+        ? { failedRequests: stats.failedRequests + 1 }
+        : { completedRequests: stats.completedRequests + 1 }
+    )
+  }
+
+  /**
+   * How long this packet should take to cross the edge, in milliseconds.
+   *
+   * This used to be a pixels-per-second figure derived from BASE_LATENCY_MS, which
+   * treated a 20ms notional latency as 20ms of wall clock and worked out to roughly
+   * 10,000 px/s — a hop finished in one to four frames, so nothing was ever visible.
+   * Playback tempo now comes from timing.ts and is independent of reported latency.
+   */
+  private _hopDuration(edgeId: string, lengthPx: number, config: SimConfig): number {
+    return hopDurationMs({
+      lengthPx,
+      speedMultiplier: config.speedMultiplier,
+      slowFactor: config.failure.slowEdges.has(edgeId) ? config.failure.slowFactor : 1,
+    })
+  }
+
+  private _later(fn: () => void, ms: number) {
+    const id = setTimeout(() => {
+      this.timers.delete(id)
+      fn()
+    }, ms)
+    this.timers.add(id)
   }
 
   private _tick(now: number) {
     const state = useSimulationStore.getState()
     if (state.status !== 'running') return
 
-    const dt = Math.min((now - this.lastTime) / 1000, 0.05) // cap at 50ms
+    // Cap the step so a backgrounded tab does not teleport every packet to its
+    // destination the moment it regains focus.
+    const dtMs = Math.min(now - this.lastTime, 50)
     this.lastTime = now
 
     const diagram = useDiagramStore.getState()
@@ -300,15 +353,17 @@ class SimulationEngine {
     const nextPackets: SimPacket[] = []
     const activeEdgeIds = new Set<string>()
 
+    // Every stored packet is travelling by construction: _makePacket is the only
+    // producer and it always sets that status, and a packet that arrives is replaced
+    // rather than re-stored. The previous `status !== 'travelling'` guard here
+    // looked defensive but was unreachable, and either branch of it was wrong —
+    // skipping leaked a branch and hung the completion check, decrementing risked
+    // double-counting against _onArrival.
     for (const packet of this.activePackets) {
-      if (packet.status !== 'travelling') continue
-
-      // Advance progress
-      const edge = edges.find((e) => e.id === packet.edgeId)
-      const edgeLen = this._edgeLength(edge, nodes)
-      const advance = (packet.speed * dt) / edgeLen
-
-      const updatedPacket = { ...packet, progress: packet.progress + advance }
+      const updatedPacket = {
+        ...packet,
+        progress: advanceProgress(packet.progress, dtMs, packet.durationMs),
+      }
 
       if (updatedPacket.progress >= 1) {
         // Arrived at target node
@@ -319,12 +374,17 @@ class SimulationEngine {
       }
     }
 
+    // Packets created by _onArrival start this frame too. Without them the edge
+    // highlight blinked off for one frame at every hop.
+    for (const packet of nextPackets) activeEdgeIds.add(packet.edgeId)
+
     this.activePackets = nextPackets
     useSimulationStore.getState().setPackets([...nextPackets])
     useSimulationStore.getState().setActiveEdges(activeEdgeIds)
 
-    // Check completion
-    if (this.activePackets.length === 0 && this.pendingRequests <= 0) {
+    // Check completion. A request is outstanding while it still has a live branch,
+    // so an empty branch table means the whole run has drained.
+    if (this.activePackets.length === 0 && this.branches.size === 0) {
       if (config.loop && state.stats.totalRequests < config.maxRequests) {
         this._dispatchBatch(nodes, edges, config)
       } else {
@@ -343,15 +403,18 @@ class SimulationEngine {
     config: SimConfig,
     nextPackets: SimPacket[],
   ) {
-    const travelMs = ((performance.now() - packet.startTime) / packet.path.length) * (1 / config.speedMultiplier)
+    // Determine failure. The dice roll is supplied here so the rule itself stays a
+    // pure function — see failure.ts.
+    const decision = decideFailure(packet.targetId, config.failure, Math.random())
+    const failed = decision.failed
 
-    // Determine failure
-    const failed =
-      config.failure.failNodes.has(packet.targetId) ||
-      Math.random() < config.failure.errorRate
-
-    const isSlow = config.failure.slowEdges.has(packet.edgeId)
+    const isSlow = isSlowEdge(packet.edgeId, config.failure)
     const status: 'ok' | 'error' | 'slow' = failed ? 'error' : isSlow ? 'slow' : 'ok'
+
+    // Modelled, not measured. The old version divided wall-clock animation time by
+    // the path length and scaled by the speed multiplier, so dragging the speed
+    // slider changed the latency the panel reported.
+    const travelMs = hopLatencyMs(BASE_LATENCY_MS, isSlow, config.failure.slowFactor)
 
     // Log entry
     const edge = edges.find((e) => e.id === packet.edgeId)
@@ -363,7 +426,10 @@ class SimulationEngine {
       edgeId: packet.edgeId,
       latencyMs: Math.round(travelMs),
       status,
-      protocol: (edge?.data as any)?.protocol,
+      protocol: readDataString(edge?.data, 'protocol'),
+      // Says which rule fired, so a red row in the log distinguishes "you marked
+      // this node down" from "the error rate rolled badly".
+      cause: decision.reason ? failureLabel(decision.reason) : undefined,
     }
     useSimulationStore.getState().addLogEntry(logEntry)
 
@@ -378,62 +444,66 @@ class SimulationEngine {
       totalLatencyMs: totalLat,
       avgLatencyMs: totalLat / reqIn,
       errors,
-      isBottleneck: totalLat / reqIn > 200,
+      isBottleneck: totalLat / reqIn > BOTTLENECK_MS,
     })
 
     // Pulse target node
-    const nodeStatus: import('@/types/simulation').NodeSimStatus = failed ? 'error' : isSlow ? 'slow' : 'active'
+    const nodeStatus: NodeSimStatus = failed ? 'error' : isSlow ? 'slow' : 'active'
     useSimulationStore.getState().setNodeStatus(packet.targetId, nodeStatus)
-    setTimeout(
+    this._later(
       () => useSimulationStore.getState().clearNodeStatus(packet.targetId),
       failed ? 1200 : 500,
     )
 
     if (failed) {
-      // Mark the edge as failed visually
+      // Mark the edge as failed visually. This branch dies here; siblings continue.
       useSimulationStore.getState().setFailedEdge(packet.edgeId)
-      // Request dies here
-      this.pendingRequests--
-      useSimulationStore.getState().updateStats({
-        failedRequests: useSimulationStore.getState().stats.failedRequests + 1,
-      })
+      this._endBranch(packet.requestIndex, true)
       return
     }
 
-    // Advance to next hop
-    const nextStep = packet.pathStep + 1
-    if (nextStep >= packet.path.length - 1) {
-      // Completed full path
-      this.pendingRequests--
-      useSimulationStore.getState().updateStats({
-        completedRequests: useSimulationStore.getState().stats.completedRequests + 1,
-      })
+    // Fan out to everything downstream of the node just reached. The route is
+    // decided here rather than pre-planned, so a server that talks to a cache, a
+    // database and a queue lights up all three.
+    //
+    // Truncated against the global ceiling: branching is multiplicative, and a mesh
+    // diagram would otherwise keep doubling until the frame budget is gone.
+    const budget = MAX_LIVE_PACKETS - nextPackets.length
+    const onward =
+      budget > 0 ? nextHops(this.graph, packet.targetId, packet.trail).slice(0, budget) : []
+
+    if (onward.length === 0) {
+      // End of the flow for this branch — a sink node, a cycle already visited, or
+      // the depth cap.
+      this._endBranch(packet.requestIndex, false)
       return
     }
 
-    const nextSourceId = packet.path[nextStep]
-    const nextTargetId = packet.path[nextStep + 1]
-    const nextEdge = edges.find(
-      (e) => e.source === nextSourceId && e.target === nextTargetId,
-    )
-    if (!nextEdge) {
-      this.pendingRequests--
-      return
+    // This branch becomes its children, so retire it once they are registered;
+    // doing it in the other order could momentarily drop the count to zero and
+    // complete the request early.
+    let spawned = 0
+    for (const hop of onward) {
+      const next = this._makePacket(
+        packet.requestIndex,
+        packet.color,
+        packet.targetId,
+        hop,
+        packet.trail,
+        nodes,
+        edges,
+        config
+      )
+      if (next) {
+        nextPackets.push(next)
+        spawned++
+      }
     }
+    this._endBranch(packet.requestIndex, false)
 
-    const nextPacket: SimPacket = {
-      ...packet,
-      id: uid(),
-      edgeId: nextEdge.id,
-      sourceId: nextSourceId,
-      targetId: nextTargetId,
-      progress: 0,
-      speed: this._packetSpeed(nextEdge.id, config),
-      startTime: performance.now(),
-      pathStep: nextStep,
-      status: 'travelling',
-    }
-    nextPackets.push(nextPacket)
+    // Every candidate edge vanished mid-flight; nothing was registered to replace
+    // this branch, and _endBranch above has already accounted for it.
+    if (spawned === 0) return
   }
 
   // Estimate edge length from node positions for proportional travel time
@@ -441,10 +511,10 @@ class SimulationEngine {
     edge: ArchitectureEdge | undefined,
     nodes: ArchitectureNode[],
   ): number {
-    if (!edge) return BASE_EDGE_PX
+    if (!edge) return FALLBACK_EDGE_PX
     const src = nodes.find((n) => n.id === edge.source)
     const tgt = nodes.find((n) => n.id === edge.target)
-    if (!src || !tgt) return BASE_EDGE_PX
+    if (!src || !tgt) return FALLBACK_EDGE_PX
     const dx = (tgt.position?.x ?? 0) - (src.position?.x ?? 0)
     const dy = (tgt.position?.y ?? 0) - (src.position?.y ?? 0)
     return Math.max(Math.sqrt(dx * dx + dy * dy), 60)
@@ -462,6 +532,11 @@ class SimulationEngine {
       clearInterval(this.dispatchInterval)
       this.dispatchInterval = null
     }
+  }
+
+  private _clearTimers() {
+    for (const id of this.timers) clearTimeout(id)
+    this.timers.clear()
   }
 }
 

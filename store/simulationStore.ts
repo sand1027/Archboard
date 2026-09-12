@@ -39,6 +39,7 @@ interface SimStore extends SimulationState {
   setStartNode: (nodeId: string) => void
   toggleFailNode: (nodeId: string) => void
   toggleSlowEdge: (edgeId: string) => void
+  clearFailures: () => void
   setErrorRate: (rate: number) => void
 
   // Simulation lifecycle
@@ -77,16 +78,28 @@ export const useSimulationStore = create<SimStore>()((set, get) => ({
   toggleFailNode: (nodeId) =>
     set((s) => {
       const failNodes = new Set(s.config.failure.failNodes)
-      failNodes.has(nodeId) ? failNodes.delete(nodeId) : failNodes.add(nodeId)
+      if (failNodes.has(nodeId)) failNodes.delete(nodeId)
+      else failNodes.add(nodeId)
       return { config: { ...s.config, failure: { ...s.config.failure, failNodes } } }
     }),
 
   toggleSlowEdge: (edgeId) =>
     set((s) => {
       const slowEdges = new Set(s.config.failure.slowEdges)
-      slowEdges.has(edgeId) ? slowEdges.delete(edgeId) : slowEdges.add(edgeId)
+      if (slowEdges.has(edgeId)) slowEdges.delete(edgeId)
+      else slowEdges.add(edgeId)
       return { config: { ...s.config, failure: { ...s.config.failure, slowEdges } } }
     }),
+
+  // Marked failures survive reset() on purpose — they are configuration, not run
+  // state — so clearing them needs its own action.
+  clearFailures: () =>
+    set((s) => ({
+      config: {
+        ...s.config,
+        failure: { ...s.config.failure, failNodes: new Set(), slowEdges: new Set() },
+      },
+    })),
 
   setErrorRate: (rate) =>
     set((s) => ({ config: { ...s.config, failure: { ...s.config.failure, errorRate: rate } } })),

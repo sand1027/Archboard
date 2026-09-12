@@ -10,6 +10,7 @@ import { useSimulationStore } from '@/store/simulationStore'
 import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
 import { simulationEngine } from '@/lib/simulation/engine'
+import { buildGraph, readDataString, suggestStartNode } from '@/lib/simulation/traversal'
 import type { SimMode } from '@/types/simulation'
 
 const MODE_OPTIONS: { id: SimMode; label: string; desc: string }[] = [
@@ -24,7 +25,7 @@ export default function SimulationPanel() {
   const {
     status, config, log, stats, nodeStats,
     setConfig, setStartNode, setErrorRate,
-    toggleFailNode, toggleSlowEdge,
+    toggleFailNode, toggleSlowEdge, clearFailures,
   } = useSimulationStore()
 
   const archNodes = useMemo(
@@ -32,12 +33,43 @@ export default function SimulationPanel() {
     [nodes]
   )
 
+  // Id → display name, so the failure lists can name what the user marked instead
+  // of showing a truncated id.
+  const nodeLabels = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const node of nodes) {
+      const label = readDataString(node.data, 'label') ?? readDataString(node.data, 'name')
+      map.set(node.id, label ?? node.id.slice(0, 8))
+    }
+    return map
+  }, [nodes])
+
+  const edgeLabels = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const edge of edges) {
+      const from = nodeLabels.get(edge.source) ?? edge.source.slice(0, 8)
+      const to = nodeLabels.get(edge.target) ?? edge.target.slice(0, 8)
+      map.set(edge.id, `${from} → ${to}`)
+    }
+    return map
+  }, [edges, nodeLabels])
+
+  const hasFailures =
+    config.failure.failNodes.size > 0 || config.failure.slowEdges.size > 0
+
   const handleStart = useCallback(() => {
+    // Default to the diagram's entry point rather than whichever node happens to be
+    // first in the array. Starting from the middle leaves everything upstream of it
+    // out of the run, which reads as a broken simulation rather than a bad default.
     if (!config.startNodeId && archNodes.length > 0) {
-      setStartNode(archNodes[0].id)
+      const suggested = suggestStartNode(
+        buildGraph(edges),
+        archNodes.map((n) => n.id)
+      )
+      if (suggested) setStartNode(suggested)
     }
     simulationEngine.start()
-  }, [config.startNodeId, archNodes, setStartNode])
+  }, [config.startNodeId, archNodes, edges, setStartNode])
 
   const handlePause = useCallback(() => simulationEngine.pause(), [])
   const handleStop  = useCallback(() => simulationEngine.stop(),  [])
@@ -226,22 +258,61 @@ export default function SimulationPanel() {
                 </span>
               </div>
               <p className="text-[10px] text-gray-400">
-                Click nodes on canvas to mark them as failure points. Click edges to make them slow.
+                Click a node on the canvas to mark it down — it gets a dashed red ring
+                and fails every request that reaches it. Click an edge to throttle it
+                to {config.failure.slowFactor}× slower.
               </p>
+
               {config.failure.failNodes.size > 0 && (
-                <div className="bg-red-50 rounded-lg px-3 py-2 border border-red-200">
-                  <p className="text-xs font-medium text-red-700 mb-1">Fail nodes</p>
-                  {Array.from(config.failure.failNodes).map((id) => {
-                    const n = nodes.find((node) => node.id === id)
-                    const label = (n?.data as any)?.label ?? id.slice(0, 8)
-                    return (
-                      <div key={id} className="flex items-center justify-between text-xs text-red-600">
-                        <span>{label}</span>
-                        <button onClick={() => toggleFailNode(id)} className="hover:text-red-800 ml-2">✕</button>
-                      </div>
-                    )
-                  })}
+                <div className="bg-red-50 rounded-lg px-3 py-2 border border-red-200 space-y-1">
+                  <p className="text-xs font-medium text-red-700">
+                    Down ({config.failure.failNodes.size})
+                  </p>
+                  {Array.from(config.failure.failNodes).map((id) => (
+                    <div key={id} className="flex items-center justify-between text-xs text-red-600">
+                      <span className="truncate">{nodeLabels.get(id) ?? id.slice(0, 8)}</span>
+                      <button
+                        onClick={() => toggleFailNode(id)}
+                        disabled={isActive}
+                        aria-label={`Restore ${nodeLabels.get(id) ?? 'node'}`}
+                        className="hover:text-red-800 ml-2 disabled:opacity-40"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
                 </div>
+              )}
+
+              {config.failure.slowEdges.size > 0 && (
+                <div className="bg-amber-50 rounded-lg px-3 py-2 border border-amber-200 space-y-1">
+                  <p className="text-xs font-medium text-amber-700">
+                    Throttled ({config.failure.slowEdges.size})
+                  </p>
+                  {Array.from(config.failure.slowEdges).map((id) => (
+                    <div key={id} className="flex items-center justify-between text-xs text-amber-700">
+                      <span className="truncate">{edgeLabels.get(id) ?? id.slice(0, 8)}</span>
+                      <button
+                        onClick={() => toggleSlowEdge(id)}
+                        disabled={isActive}
+                        aria-label="Restore connection speed"
+                        className="hover:text-amber-900 ml-2 disabled:opacity-40"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {hasFailures && (
+                <button
+                  onClick={clearFailures}
+                  disabled={isActive}
+                  className="w-full text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg py-1.5 transition-colors disabled:opacity-40"
+                >
+                  Clear all failures
+                </button>
               )}
             </div>
           </Section>
@@ -324,6 +395,9 @@ export default function SimulationPanel() {
                   ].join(' ')} />
                   <span className="flex-1 truncate text-gray-700">
                     {entry.sourceLabel} → {entry.targetLabel}
+                    {entry.cause && (
+                      <span className="text-red-500 font-medium"> · {entry.cause}</span>
+                    )}
                   </span>
                   {entry.protocol && (
                     <span className="text-gray-400 font-medium shrink-0">{entry.protocol}</span>

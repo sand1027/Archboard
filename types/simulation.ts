@@ -14,17 +14,19 @@ export interface SimPacket {
   targetId: string
   // 0–1 progress along the edge
   progress: number
-  // Pixels-per-second (derived from speed setting)
-  speed: number
+  // Wall-clock milliseconds this packet should take to cross its edge. A duration
+  // rather than a speed: the renderer samples the edge's real curved path, whose
+  // length is not the straight-line distance a px/s figure would assume.
+  durationMs: number
   status: PacketStatus
   // Which request number this is
   requestIndex: number
   // Time when packet started on this edge (ms)
   startTime: number
-  // The full path this request will traverse (node IDs)
-  path: string[]
-  // Current position in path (index into path)
-  pathStep: number
+  // Node IDs this branch has already visited, ending at targetId. A request fans
+  // out rather than following one pre-planned route, so a packet carries its own
+  // history instead of an index into a shared path. Doubles as the cycle guard.
+  trail: string[]
   // Color for this request thread
   color: string
 }
@@ -38,6 +40,8 @@ export interface SimLogEntry {
   latencyMs: number
   status: 'ok' | 'error' | 'slow'
   protocol?: string
+  // Which failure rule fired, when one did.
+  cause?: string
 }
 
 export interface NodeStat {

@@ -111,9 +111,10 @@ html, body, #__next {
   to   { stroke-dashoffset: 0;  }
 }
 
-/* Applied to active simulation edges */
+/* Applied to active simulation edges. Duration is set per-edge from the
+   simulation speed multiplier; the value here is the 1x fallback. */
 .sim-edge-active {
   stroke-dasharray: 10 5;
-  animation: sim-flow 0.5s linear infinite;
+  animation: sim-flow var(--sim-flow-duration, 0.5s) linear infinite;
   stroke-linecap: round;
 }
