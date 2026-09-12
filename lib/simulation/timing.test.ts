@@ -9,6 +9,10 @@ import {
   hopDurationMs,
   hopLatencyMs,
   packetTrail,
+  MIN_SERVICE_PLAYBACK_MS,
+  REFERENCE_SERVICE_MS,
+  servicePlaybackMs,
+  simulatedMs,
 } from './timing'
 
 describe('hopDurationMs', () => {
@@ -141,5 +145,52 @@ describe('packetTrail', () => {
     expect(packetTrail(1.5)[0].t).toBe(1)
     expect(packetTrail(-1)[0].t).toBe(0)
     expect(packetTrail(Number.NaN)[0].t).toBe(0)
+  })
+})
+
+describe('servicePlaybackMs', () => {
+  it('gives the reference service time one hop of playback at 1x', () => {
+    expect(servicePlaybackMs(REFERENCE_SERVICE_MS, 1)).toBeCloseTo(BASE_HOP_MS)
+  })
+
+  it('makes a slower node visibly slower', () => {
+    const cache = servicePlaybackMs(2, 1)
+    const database = servicePlaybackMs(40, 1)
+    expect(database).toBeGreaterThan(cache)
+  })
+
+  it('speeds up with the playback multiplier', () => {
+    expect(servicePlaybackMs(REFERENCE_SERVICE_MS, 4)).toBeCloseTo(BASE_HOP_MS / 4)
+  })
+
+  // A dot that vanishes the instant it lands reads as a dropped request, not a fast
+  // one, so even a trivial service time gets a visible dwell.
+  it('holds a floor so a fast node is still perceptible', () => {
+    expect(servicePlaybackMs(0, 1)).toBe(MIN_SERVICE_PLAYBACK_MS)
+    expect(servicePlaybackMs(1, 1)).toBe(MIN_SERVICE_PLAYBACK_MS)
+  })
+
+  it('scales the floor with speed too, so 8x is not gated by it', () => {
+    expect(servicePlaybackMs(0, 8)).toBeCloseTo(MIN_SERVICE_PLAYBACK_MS / 8)
+  })
+})
+
+describe('simulatedMs', () => {
+  // Reported wait must not change when the user drags the speed slider; playback
+  // tempo is a viewing preference.
+  it('round-trips a service playback duration back to its simulated value', () => {
+    for (const speed of [0.25, 1, 4]) {
+      const wall = servicePlaybackMs(REFERENCE_SERVICE_MS, speed)
+      expect(simulatedMs(wall, speed)).toBeCloseTo(REFERENCE_SERVICE_MS)
+    }
+  })
+
+  it('is zero for no elapsed time', () => {
+    expect(simulatedMs(0, 1)).toBe(0)
+    expect(simulatedMs(-5, 1)).toBe(0)
+  })
+
+  it('treats a nonsense speed as 1x', () => {
+    expect(simulatedMs(BASE_HOP_MS, 0)).toBeCloseTo(REFERENCE_SERVICE_MS)
   })
 })

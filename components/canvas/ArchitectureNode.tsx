@@ -8,7 +8,7 @@ import { useSimulationStore } from '@/store/simulationStore'
 import { useUiStore } from '@/store/uiStore'
 import { useRouter } from 'next/navigation'
 import { lldWorkspacePath, useDiagramRouteId } from '@/hooks/useDiagramRouteId'
-import { Layers, X } from 'lucide-react'
+import { AlertTriangle, Layers, X } from 'lucide-react'
 import Image from 'next/image'
 
 type ArchitectureNodeType = Node<ArchitectureNodeData, 'architecture'>
@@ -30,6 +30,18 @@ const SIM_STATUS_STYLES: Record<string, { ring: string; glow: string }> = {
   processing: { ring: '#F59E0B', glow: 'rgba(245,158,11,0.25)' },
   error:      { ring: '#EF4444', glow: 'rgba(239,68,68,0.3)'  },
   slow:       { ring: '#F97316', glow: 'rgba(249,115,22,0.25)' },
+}
+
+/**
+ * Bottleneck styling by severity.
+ *
+ * Amber and orange rather than the red used for failure injection: a saturated node
+ * is a capacity finding, not an outage, and the two need to be tellable apart when
+ * both are on screen.
+ */
+const BOTTLENECK_STYLES: Record<'busy' | 'saturated', { ring: string; label: string }> = {
+  busy:      { ring: '#F59E0B', label: 'Busy' },
+  saturated: { ring: '#EA580C', label: 'Saturated' },
 }
 
 const DEFAULT_W = 72
@@ -61,6 +73,15 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
   const failureMode = useSimulationStore(
     (s) => s.config.mode === 'failure-mode' && s.status === 'idle'
   )
+
+  // Contention. Selector-scoped to primitives so this only re-renders when the
+  // node's own load actually changes, not on every engine frame.
+  const severity = useSimulationStore((s) => s.nodeStats[id]?.severity ?? 'none')
+  const queueDepth = useSimulationStore((s) => s.nodeStats[id]?.queueDepth ?? 0)
+  const utilPct = useSimulationStore((s) =>
+    Math.round((s.nodeStats[id]?.utilisation ?? 0) * 100)
+  )
+  const bottleneck = severity !== 'none' ? BOTTLENECK_STYLES[severity] : null
 
   const accentColor =
     data.provider
@@ -136,6 +157,68 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
       )}
 
       {/*
+        Bottleneck. Shown on the canvas rather than only in the panel's list, because
+        the useful question is "which box in my architecture is the constraint" and
+        that is answered by looking at the diagram.
+
+        Survives the run ending: the finding is the output, so it stays until the next
+        run resets the stats.
+      */}
+      {bottleneck && !markedDown && (
+        <>
+          <div
+            className="absolute inset-0 rounded-xl pointer-events-none sim-bottleneck-ring"
+            style={{
+              boxShadow: `0 0 0 2.5px ${bottleneck.ring}, 0 0 18px 5px ${bottleneck.ring}44`,
+              zIndex: 18,
+            }}
+          />
+          <div
+            className="absolute -top-2 left-1/2 flex items-center gap-0.5 rounded-full pointer-events-none whitespace-nowrap"
+            style={{
+              transform: 'translateX(-50%)',
+              padding: '1px 5px',
+              background: bottleneck.ring,
+              color: '#ffffff',
+              fontSize: 8,
+              fontWeight: 700,
+              letterSpacing: 0.2,
+              boxShadow: '0 0 0 1.5px #ffffff',
+              zIndex: 21,
+            }}
+            title={`${data.label}: ${utilPct}% utilised${
+              queueDepth > 0 ? `, ${queueDepth} request(s) queued` : ''
+            }`}
+          >
+            <AlertTriangle style={{ width: 7, height: 7 }} strokeWidth={3} />
+            {utilPct}%
+          </div>
+
+          {/* Live backlog. The number people actually want when a tier is the
+              constraint. */}
+          {queueDepth > 0 && (
+            <div
+              className="absolute -bottom-1.5 -right-1.5 flex items-center justify-center rounded-full pointer-events-none"
+              style={{
+                minWidth: 16,
+                height: 16,
+                padding: '0 3px',
+                background: '#ffffff',
+                border: `2px solid ${bottleneck.ring}`,
+                color: bottleneck.ring,
+                fontSize: 9,
+                fontWeight: 700,
+                zIndex: 21,
+              }}
+              title={`${queueDepth} request(s) waiting for a free server`}
+            >
+              {queueDepth}
+            </div>
+          )}
+        </>
+      )}
+
+      {/*
         Marked down. A dashed ring rather than the solid one used for live status,
         so "configured to fail" and "failing right now" stay distinguishable — during
         a run a marked node shows both.
@@ -181,9 +264,9 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
         style={{
           width: w,
           height: h - LABEL_H,
-          // A node marked down stays at full strength even before traffic reaches
-          // it: it is the thing the user is watching for.
-          opacity: isSimulating && !simNodeStatus && !markedDown ? 0.5 : 1,
+          // A node marked down, or found to be a bottleneck, stays at full strength
+          // even between packets: it is the thing the user is watching for.
+          opacity: isSimulating && !simNodeStatus && !markedDown && !bottleneck ? 0.5 : 1,
           transition: 'opacity 0.2s',
         }}
       >

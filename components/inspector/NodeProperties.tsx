@@ -6,6 +6,13 @@ import Image from 'next/image'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { getComponentById } from '@/data/components'
+import {
+  MAX_CONCURRENCY,
+  MAX_SERVICE_MS,
+  MIN_CONCURRENCY,
+  MIN_SERVICE_MS,
+  nodeCapacity,
+} from '@/lib/simulation/capacity'
 import type { ArchitectureNodeData } from '@/types/architecture'
 import type { Node } from '@xyflow/react'
 
@@ -27,6 +34,23 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
   const handleLabelChange = useCallback(
     (value: string) => {
       updateNode(node.id, { label: value } as Partial<ArchitectureNodeData>)
+    },
+    [node.id, updateNode]
+  )
+
+  // What the simulation would use with no override, so the inputs can show it as
+  // placeholder text rather than making the user guess.
+  const defaults = nodeCapacity({ category: node.data.category })
+
+  const handleCapacityChange = useCallback(
+    (field: 'serviceMs' | 'concurrency', raw: string) => {
+      // Empty clears the override and hands the node back to its category default.
+      // Storing 0 instead would silently pin a database at zero service time.
+      const trimmed = raw.trim()
+      const parsed = trimmed === '' ? undefined : Number(trimmed)
+      if (parsed !== undefined && !Number.isFinite(parsed)) return
+
+      updateNode(node.id, { [field]: parsed } as Partial<ArchitectureNodeData>)
     },
     [node.id, updateNode]
   )
@@ -88,7 +112,11 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
             <input
               type="text"
               value={node.data.subtitle ?? ''}
-              onChange={(e) => updateNode(node.id, { subtitle: e.target.value } as any)}
+              onChange={(e) =>
+                updateNode(node.id, {
+                  subtitle: e.target.value,
+                } as Partial<ArchitectureNodeData>)
+              }
               placeholder="Optional subtitle"
               className="field-input"
             />
@@ -119,6 +147,58 @@ export default function NodeProperties({ node }: NodePropertiesProps) {
           <span className="text-xs text-slate-500">
             {connectionCount} connection{connectionCount !== 1 ? 's' : ''}
           </span>
+        </div>
+      </div>
+
+      {/* Simulation capacity */}
+      <div className="p-4 space-y-3">
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+          Capacity
+        </p>
+        <p className="text-[10px] text-slate-400 leading-relaxed">
+          What a load test uses to find bottlenecks. Blank means the default for a{' '}
+          <span className="font-medium text-slate-500">{node.data.category}</span>{' '}
+          component ({defaults.serviceMs}ms × {defaults.concurrency}).
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label
+              className="block text-xs text-slate-400 mb-1"
+              htmlFor={`service-${node.id}`}
+            >
+              Service ms
+            </label>
+            <input
+              id={`service-${node.id}`}
+              type="number"
+              min={MIN_SERVICE_MS}
+              max={MAX_SERVICE_MS}
+              value={node.data.serviceMs ?? ''}
+              placeholder={String(defaults.serviceMs)}
+              onChange={(e) => handleCapacityChange('serviceMs', e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl
+                text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label
+              className="block text-xs text-slate-400 mb-1"
+              htmlFor={`concurrency-${node.id}`}
+            >
+              Concurrency
+            </label>
+            <input
+              id={`concurrency-${node.id}`}
+              type="number"
+              min={MIN_CONCURRENCY}
+              max={MAX_CONCURRENCY}
+              value={node.data.concurrency ?? ''}
+              placeholder={String(defaults.concurrency)}
+              onChange={(e) => handleCapacityChange('concurrency', e.target.value)}
+              className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl
+                text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
       </div>
 

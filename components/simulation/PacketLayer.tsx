@@ -67,7 +67,9 @@ function PacketLayer() {
  * is nothing sensible to draw and we skip it.
  */
 function PacketDots({ packet }: { packet: SimPacket }) {
-  const dots = packetTrail(packet.progress)
+  // A packet waiting at a node is not moving, so a motion trail would be a lie.
+  const travelling = packet.status === 'travelling'
+  const dots = travelling ? packetTrail(packet.progress) : [{ t: 1, scale: 1, opacity: 1 }]
 
   const positioned: { point: Point; scale: number; opacity: number }[] = []
   for (const dot of dots) {
@@ -103,14 +105,47 @@ function PacketDots({ packet }: { packet: SimPacket }) {
         fill={packet.color}
         opacity={0.18}
       />
-      <circle
-        cx={head.point.x}
-        cy={head.point.y}
-        r={HEAD_RADIUS}
-        fill={packet.color}
-        stroke="#ffffff"
-        strokeWidth={1.5}
-      />
+
+      {packet.status === 'queued' ? (
+        /*
+          Waiting for a free server: hollow, so a backlog reads as a cluster of rings
+          stacked on the node rather than as several requests being served at once.
+          This is what a bottleneck looks like from the canvas.
+        */
+        <circle
+          cx={head.point.x}
+          cy={head.point.y}
+          r={HEAD_RADIUS}
+          fill="#ffffff"
+          stroke={packet.color}
+          strokeWidth={2}
+          strokeDasharray="2.5,2"
+        />
+      ) : (
+        <circle
+          cx={head.point.x}
+          cy={head.point.y}
+          r={HEAD_RADIUS}
+          fill={packet.color}
+          stroke="#ffffff"
+          strokeWidth={1.5}
+        />
+      )}
+
+      {/* Being served: a pulsing ring, so occupying a server is visibly different
+          from merely having arrived. */}
+      {packet.status === 'serving' && (
+        <circle
+          cx={head.point.x}
+          cy={head.point.y}
+          r={HEAD_RADIUS * 1.7}
+          fill="none"
+          stroke={packet.color}
+          strokeWidth={1.5}
+          opacity={0.6}
+          className="sim-packet-serving"
+        />
+      )}
     </g>
   )
 }

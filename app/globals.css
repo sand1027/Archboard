@@ -118,3 +118,23 @@ html, body, #__next {
   animation: sim-flow var(--sim-flow-duration, 0.5s) linear infinite;
   stroke-linecap: round;
 }
+
+/* A request occupying a server at a node — distinguishes "being worked on" from
+   "queued behind others". */
+@keyframes sim-serving-pulse {
+  0%   { r: 6;  opacity: 0.65; }
+  100% { r: 13; opacity: 0;    }
+}
+.sim-packet-serving {
+  animation: sim-serving-pulse 1s ease-out infinite;
+}
+
+/* Saturated node: the bottleneck. Breathes so it draws the eye without the
+   alarm of the failure-injection red. */
+@keyframes sim-bottleneck-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
+}
+.sim-bottleneck-ring {
+  animation: sim-bottleneck-pulse 1.4s ease-in-out infinite;
+}

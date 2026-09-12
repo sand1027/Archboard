@@ -57,6 +57,17 @@ export default function SimulationPanel() {
   const hasFailures =
     config.failure.failNodes.size > 0 || config.failure.slowEdges.size > 0
 
+  // Most loaded first: the constraint should be the first row, not something the user
+  // has to scan for. Ties fall back to traffic volume.
+  const loadedNodes = useMemo(
+    () =>
+      Object.values(nodeStats)
+        .filter((s) => s.requestsIn > 0)
+        .sort((a, b) => b.utilisation - a.utilisation || b.requestsIn - a.requestsIn)
+        .slice(0, 8),
+    [nodeStats]
+  )
+
   const handleStart = useCallback(() => {
     // Default to the diagram's entry point rather than whichever node happens to be
     // first in the array. Starting from the middle leaves everything upstream of it
@@ -414,33 +425,77 @@ export default function SimulationPanel() {
           </Section>
         )}
 
-        {/* ── Node bottlenecks ── */}
-        {Object.values(nodeStats).some((s) => s.requestsIn > 0) && (
-          <Section title="Node Stats">
+        {/* ── Bottlenecks ── */}
+        {loadedNodes.length > 0 && (
+          <Section title="Bottlenecks">
+            {/*
+              Contention needs concurrent traffic. In request-flow mode a single
+              request always finds every server free, so nothing can ever be flagged —
+              saying so beats leaving the user to wonder why the section is empty.
+            */}
+            {config.mode === 'request-flow' && (
+              <p className="text-[10px] text-gray-400 mb-2">
+                One request cannot contend with itself. Switch to Load Test to find
+                bottlenecks.
+              </p>
+            )}
+
             <div className="space-y-1">
-              {Object.values(nodeStats)
-                .sort((a, b) => b.requestsIn - a.requestsIn)
-                .slice(0, 8)
-                .map((stat) => {
-                  const node = nodes.find((n) => n.id === stat.nodeId)
-                  const label = (node?.data as any)?.label ?? stat.nodeId.slice(0, 8)
-                  const errPct = stat.requestsIn > 0 ? (stat.errors / stat.requestsIn) * 100 : 0
-                  return (
-                    <div key={stat.nodeId} className="flex items-center gap-2 text-[10px]">
+              {loadedNodes.map((stat) => {
+                const label = nodeLabels.get(stat.nodeId) ?? stat.nodeId.slice(0, 8)
+                const errPct = stat.requestsIn > 0 ? (stat.errors / stat.requestsIn) * 100 : 0
+                const util = Math.round(stat.utilisation * 100)
+                const tone =
+                  stat.severity === 'saturated'
+                    ? 'text-orange-600'
+                    : stat.severity === 'busy'
+                      ? 'text-amber-600'
+                      : 'text-gray-400'
+
+                return (
+                  <div key={stat.nodeId} className="space-y-0.5">
+                    <div className="flex items-center gap-2 text-[10px]">
                       <span className="truncate flex-1 text-gray-700">{label}</span>
-                      <span className="text-gray-400">{stat.requestsIn} req</span>
-                      <span className={stat.isBottleneck ? 'text-red-500 font-bold' : 'text-gray-400'}>
-                        {Math.round(stat.avgLatencyMs)}ms
-                      </span>
-                      {errPct > 0 && (
-                        <span className="text-red-500">{Math.round(errPct)}%err</span>
-                      )}
-                      {stat.isBottleneck && (
-                        <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+                      <span className="text-gray-400 shrink-0">{stat.requestsIn} req</span>
+                      <span className={`${tone} font-medium shrink-0`}>{util}%</span>
+                      {stat.severity !== 'none' && (
+                        <AlertTriangle
+                          className={`w-3 h-3 shrink-0 ${
+                            stat.severity === 'saturated' ? 'text-orange-600' : 'text-amber-500'
+                          }`}
+                        />
                       )}
                     </div>
-                  )
-                })}
+
+                    {/* Utilisation bar: the shape of the finding at a glance. */}
+                    <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+                      <div
+                        className={
+                          stat.severity === 'saturated'
+                            ? 'h-full bg-orange-500'
+                            : stat.severity === 'busy'
+                              ? 'h-full bg-amber-400'
+                              : 'h-full bg-gray-300'
+                        }
+                        style={{ width: `${Math.max(util, 1)}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[9px] text-gray-400">
+                      <span>
+                        {stat.serviceMs}ms × {stat.concurrency}
+                      </span>
+                      {stat.avgWaitMs >= 1 && (
+                        <span className={tone}>wait {Math.round(stat.avgWaitMs)}ms</span>
+                      )}
+                      {stat.maxQueueDepth > 0 && <span>peak queue {stat.maxQueueDepth}</span>}
+                      {errPct > 0 && (
+                        <span className="text-red-500">{Math.round(errPct)}% err</span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </Section>
         )}

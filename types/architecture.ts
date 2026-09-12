@@ -144,6 +144,13 @@ export interface ArchitectureNodeData extends Record<string, unknown> {
   color?: string
   width?: number
   height?: number
+  /**
+   * Simulation capacity overrides. Absent means "use the profile for this
+   * category" — see lib/simulation/capacity.ts — so a diagram needs no configuration
+   * before a load test can find its bottleneck.
+   */
+  serviceMs?: number
+  concurrency?: number
 }
 
 export type { RelationKind } from './lld'

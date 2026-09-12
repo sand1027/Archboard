@@ -81,6 +81,41 @@ export function hopLatencyMs(baseLatencyMs: number, isSlow: boolean, slowFactor:
 }
 
 /**
+ * Wall-clock time a node should visibly spend serving one request.
+ *
+ * Same split as hopDurationMs: the configured service time is the number the run
+ * reports, this is how long the dot sits on the node for. A floor keeps a 2ms cache
+ * lookup from being invisible — a dot that vanishes the instant it lands reads as a
+ * dropped request rather than a fast one.
+ */
+export const MIN_SERVICE_PLAYBACK_MS = 120
+
+export function servicePlaybackMs(serviceMs: number, speedMultiplier: number): number {
+  const speed = Number.isFinite(speedMultiplier) && speedMultiplier > 0 ? speedMultiplier : 1
+  const service = Number.isFinite(serviceMs) && serviceMs > 0 ? serviceMs : 0
+  // Scale the notional service time into playback tempo, using the same reference
+  // as a hop so a 40ms database read looks slower than a 2ms cache hit.
+  const scaled = (service / REFERENCE_SERVICE_MS) * BASE_HOP_MS
+  return Math.max(scaled / speed, MIN_SERVICE_PLAYBACK_MS / speed)
+}
+
+/** Service time that maps to one hop's worth of playback at 1x. */
+export const REFERENCE_SERVICE_MS = 40
+
+/**
+ * Convert an observed wall-clock duration back into simulated milliseconds.
+ *
+ * Queue wait is the one latency the engine measures rather than models, so it has to
+ * be divided back out of playback tempo. Without this, reported wait would quadruple
+ * when the user dragged the speed slider from 4x to 1x.
+ */
+export function simulatedMs(wallMs: number, speedMultiplier: number): number {
+  const speed = Number.isFinite(speedMultiplier) && speedMultiplier > 0 ? speedMultiplier : 1
+  const wall = Number.isFinite(wallMs) && wallMs > 0 ? wallMs : 0
+  return (wall * speed * REFERENCE_SERVICE_MS) / BASE_HOP_MS
+}
+
+/**
  * Gap between dispatches when several requests are sent in sequence.
  *
  * Tied to the hop tempo so a load test at 4x actually looks four times busier.

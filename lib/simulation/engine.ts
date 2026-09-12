@@ -22,6 +22,7 @@ import type {
   SimLogEntry,
   SimConfig,
   NodeSimStatus,
+  NodeStat,
 } from '@/types/simulation'
 import { useSimulationStore } from '@/store/simulationStore'
 import { useDiagramStore } from '@/store/diagramStore'
@@ -30,8 +31,16 @@ import {
   dispatchIntervalMs,
   hopDurationMs,
   hopLatencyMs,
+  servicePlaybackMs,
+  simulatedMs,
 } from './timing'
 import { decideFailure, failureLabel, isSlowEdge } from './failure'
+import {
+  bottleneckSeverity,
+  nodeCapacity,
+  utilisation,
+  type NodeCapacity,
+} from './capacity'
 import {
   MAX_LIVE_PACKETS,
   buildGraph,
@@ -48,9 +57,6 @@ const FALLBACK_EDGE_PX = 200
 
 /** Reported one-hop latency. A statistic, not a playback duration — see timing.ts. */
 const BASE_LATENCY_MS = 20
-
-/** Average hop latency above which a node is called a bottleneck. */
-const BOTTLENECK_MS = 200
 
 const PACKET_COLORS = [
   '#3B82F6', // blue
@@ -77,15 +83,67 @@ function nodeLabel(nodes: ArchitectureNode[], id: string): string {
   )
 }
 
+/**
+ * A request that has reached a node and needs serving.
+ *
+ * Carries what the branch will need to continue afterwards, since fan-out now happens
+ * when service completes rather than the moment the packet lands.
+ */
+interface Arrival {
+  packetId: string
+  requestIndex: number
+  color: string
+  /** Node being visited — the one whose server it needs. */
+  nodeId: string
+  /** Inbound edge, kept so the waiting dot can be drawn at the end of it. */
+  edgeId: string
+  fromNodeId: string
+  trail: string[]
+  /** performance.now() when it joined the queue. */
+  arrivedAt: number
+}
+
+interface ServingSlot extends Arrival {
+  /** performance.now() when service will finish. */
+  endsAt: number
+  /** Simulated milliseconds this request spent queued before service began. */
+  waitedMs: number
+}
+
+/** Per-node serving state for one run. */
+interface NodeRuntime {
+  capacity: NodeCapacity
+  serving: ServingSlot[]
+  queue: Arrival[]
+  /** Server-milliseconds consumed, summed across servers. */
+  busyServerMs: number
+  served: number
+  forwarded: number
+  totalWaitMs: number
+  totalResidenceMs: number
+  maxQueueDepth: number
+}
+
 // ─── Engine class ─────────────────────────────────────────────────────────────
 
 class SimulationEngine {
   private rafId: number | null = null
   private lastTime = 0
+  private startedAt = 0
   private requestIndex = 0
   private graph: Graph = new Map()
   private activePackets: SimPacket[] = []
   private dispatchInterval: ReturnType<typeof setInterval> | null = null
+
+  /**
+   * Serving state per node.
+   *
+   * Contention is simulated rather than estimated: a request arriving at a node with
+   * every server busy waits in a real queue. Measured queue depth and busy time are
+   * more trustworthy than a closed-form approximation, and parking the dot on the
+   * saturated node is the clearest signal the canvas can give.
+   */
+  private nodeRuntimes = new Map<string, NodeRuntime>()
 
   /**
    * Live branch count per request.
@@ -120,6 +178,7 @@ class SimulationEngine {
     const { config } = sim
 
     this.graph = buildGraph(edges)
+    this._initRuntimes(nodes)
 
     if (!hasOutgoing(this.graph, config.startNodeId)) {
       // Nowhere to go — just animate a single-node pulse
@@ -134,6 +193,9 @@ class SimulationEngine {
 
     useSimulationStore.getState().setStatus('running')
     useSimulationStore.getState().updateStats({ startedAt: Date.now() })
+    // Utilisation is busy time over elapsed time, so the window has to start here
+    // rather than at the first arrival.
+    this.startedAt = performance.now()
 
     // Dispatch first batch immediately, then on interval
     this._dispatchBatch(nodes, edges, config)
@@ -174,6 +236,12 @@ class SimulationEngine {
     this._clearInterval()
     this._clearTimers()
     this.activePackets = []
+    // Drain the node queues too, or a stopped run leaves requests parked forever on
+    // whatever they were waiting for.
+    for (const runtime of this.nodeRuntimes.values()) {
+      runtime.serving = []
+      runtime.queue = []
+    }
     useSimulationStore.getState().finaliseStats()
     useSimulationStore.getState().setStatus('finished')
     // Packets in flight when the user hits stop have nowhere to go. Left in the
@@ -196,6 +264,8 @@ class SimulationEngine {
     this.requestIndex = 0
     this.activePackets = []
     this.branches.clear()
+    this.nodeRuntimes.clear()
+    this.startedAt = 0
     useSimulationStore.getState().reset()
   }
 
@@ -329,6 +399,257 @@ class SimulationEngine {
     })
   }
 
+  /** Seed serving state for every node, resolving capacity once per run. */
+  private _initRuntimes(nodes: ArchitectureNode[]) {
+    this.nodeRuntimes.clear()
+    for (const node of nodes) {
+      this.nodeRuntimes.set(node.id, {
+        capacity: nodeCapacity(node.data),
+        serving: [],
+        queue: [],
+        busyServerMs: 0,
+        served: 0,
+        forwarded: 0,
+        totalWaitMs: 0,
+        totalResidenceMs: 0,
+        maxQueueDepth: 0,
+      })
+    }
+  }
+
+  private _runtime(nodeId: string): NodeRuntime {
+    const existing = this.nodeRuntimes.get(nodeId)
+    if (existing) return existing
+
+    // A node added mid-run, or one the diagram lost track of. Give it the generic
+    // profile rather than dropping the request.
+    const created: NodeRuntime = {
+      capacity: nodeCapacity(undefined),
+      serving: [],
+      queue: [],
+      busyServerMs: 0,
+      served: 0,
+      forwarded: 0,
+      totalWaitMs: 0,
+      totalResidenceMs: 0,
+      maxQueueDepth: 0,
+    }
+    this.nodeRuntimes.set(nodeId, created)
+    return created
+  }
+
+  /**
+   * Take a request into a node: straight into a free server, or onto the queue.
+   *
+   * This is where contention happens. Everything downstream of the node is deferred
+   * until service completes, which is what lets a saturated node hold the flow up
+   * instead of passing it straight through.
+   */
+  private _admit(arrival: Arrival, now: number, config: SimConfig) {
+    const runtime = this._runtime(arrival.nodeId)
+
+    if (runtime.serving.length < runtime.capacity.concurrency) {
+      this._beginService(runtime, arrival, now, 0, config)
+      return
+    }
+
+    runtime.queue.push(arrival)
+    runtime.maxQueueDepth = Math.max(runtime.maxQueueDepth, runtime.queue.length)
+  }
+
+  private _beginService(
+    runtime: NodeRuntime,
+    arrival: Arrival,
+    now: number,
+    waitedMs: number,
+    config: SimConfig
+  ) {
+    runtime.serving.push({
+      ...arrival,
+      endsAt: now + servicePlaybackMs(runtime.capacity.serviceMs, config.speedMultiplier),
+      waitedMs,
+    })
+  }
+
+  /**
+   * Finish whatever has completed service, then pull from the queues.
+   *
+   * Returns the packets to put on outbound edges. Draining after completing, in one
+   * pass per node, means a freed server is reused on the same frame rather than
+   * idling until the next one.
+   */
+  private _advanceNodes(
+    now: number,
+    dtMs: number,
+    nodes: ArchitectureNode[],
+    edges: ArchitectureEdge[],
+    config: SimConfig
+  ): SimPacket[] {
+    const spawned: SimPacket[] = []
+    const patches: Record<string, Partial<NodeStat>> = {}
+
+    for (const [nodeId, runtime] of this.nodeRuntimes) {
+      // Busy time is per server, so a node with three servers working accrues three
+      // milliseconds of capacity for every millisecond of wall clock.
+      runtime.busyServerMs += runtime.serving.length * dtMs
+
+      const idle = runtime.serving.length === 0 && runtime.queue.length === 0
+      if (idle && runtime.served === 0) continue
+
+      // A node that has gone quiet still needs refreshing: utilisation is busy time
+      // over elapsed time, so freezing it at the moment work stopped would leave a
+      // finished run reporting every node at its peak.
+      if (idle) {
+        patches[nodeId] = this._nodeStatPatch(nodeId, runtime, now)
+        continue
+      }
+
+      const stillServing: ServingSlot[] = []
+      for (const slot of runtime.serving) {
+        if (slot.endsAt > now) {
+          stillServing.push(slot)
+          continue
+        }
+
+        runtime.served++
+        runtime.totalWaitMs += slot.waitedMs
+        runtime.totalResidenceMs += slot.waitedMs + runtime.capacity.serviceMs
+
+        const forwarded = this._departNode(slot, nodes, edges, config, spawned)
+        runtime.forwarded += forwarded
+      }
+      runtime.serving = stillServing
+
+      // Promote waiters into any server that just freed up.
+      while (runtime.serving.length < runtime.capacity.concurrency && runtime.queue.length > 0) {
+        const next = runtime.queue.shift()!
+        this._beginService(
+          runtime,
+          next,
+          now,
+          simulatedMs(now - next.arrivedAt, config.speedMultiplier),
+          config
+        )
+      }
+
+      patches[nodeId] = this._nodeStatPatch(nodeId, runtime, now)
+    }
+
+    useSimulationStore.getState().updateNodeStats(patches)
+    return spawned
+  }
+
+  /**
+   * Fan out from a node once its service is done.
+   *
+   * Returns how many downstream packets were created; zero means this branch has
+   * reached the end of the flow.
+   */
+  private _departNode(
+    slot: ServingSlot,
+    nodes: ArchitectureNode[],
+    edges: ArchitectureEdge[],
+    config: SimConfig,
+    into: SimPacket[]
+  ): number {
+    const budget = MAX_LIVE_PACKETS - into.length - this.activePackets.length
+    const onward =
+      budget > 0 ? nextHops(this.graph, slot.nodeId, slot.trail).slice(0, budget) : []
+
+    let spawned = 0
+    for (const hop of onward) {
+      const packet = this._makePacket(
+        slot.requestIndex,
+        slot.color,
+        slot.nodeId,
+        hop,
+        slot.trail,
+        nodes,
+        edges,
+        config
+      )
+      if (packet) {
+        into.push(packet)
+        spawned++
+      }
+    }
+
+    // The branch either became its children or ended here; either way the arrival
+    // that occupied this server is done.
+    this._endBranch(slot.requestIndex, false)
+    return spawned
+  }
+
+  /** A node's contention figures, for the batched store write. */
+  private _nodeStatPatch(
+    nodeId: string,
+    runtime: NodeRuntime,
+    now: number
+  ): Partial<NodeStat> {
+    const elapsedMs = Math.max(now - this.startedAt, 1)
+    const util = utilisation(runtime.busyServerMs, elapsedMs, runtime.capacity.concurrency)
+
+    // requestsIn is written on arrival, before the node has done any work, so read it
+    // back rather than substituting the served count — a request still queueing has
+    // arrived but not been served.
+    const requestsIn = useSimulationStore.getState().nodeStats[nodeId]?.requestsIn ?? 0
+
+    const severity = bottleneckSeverity({
+      utilisation: util,
+      maxQueueDepth: runtime.maxQueueDepth,
+      requestsIn,
+    })
+
+    return {
+      nodeId,
+      queueDepth: runtime.queue.length,
+      maxQueueDepth: runtime.maxQueueDepth,
+      avgWaitMs: runtime.served > 0 ? runtime.totalWaitMs / runtime.served : 0,
+      avgLatencyMs: runtime.served > 0 ? runtime.totalResidenceMs / runtime.served : 0,
+      totalLatencyMs: runtime.totalResidenceMs,
+      requestsOut: runtime.forwarded,
+      utilisation: util,
+      serviceMs: runtime.capacity.serviceMs,
+      concurrency: runtime.capacity.concurrency,
+      severity,
+      isBottleneck: severity !== 'none',
+    }
+  }
+
+  /** Packets parked at a node, drawn at the far end of the edge they came in on. */
+  private _parkedPackets(): SimPacket[] {
+    const parked: SimPacket[] = []
+
+    for (const runtime of this.nodeRuntimes.values()) {
+      for (const slot of runtime.serving) {
+        parked.push(this._parkedPacket(slot, 'serving'))
+      }
+      for (const waiting of runtime.queue) {
+        parked.push(this._parkedPacket(waiting, 'queued'))
+      }
+    }
+
+    return parked
+  }
+
+  private _parkedPacket(arrival: Arrival, status: 'queued' | 'serving'): SimPacket {
+    return {
+      id: arrival.packetId,
+      edgeId: arrival.edgeId,
+      sourceId: arrival.fromNodeId,
+      targetId: arrival.nodeId,
+      // Held at the end of its inbound edge, which puts the dot on the node it is
+      // waiting for without the renderer needing to know about node geometry.
+      progress: 1,
+      durationMs: 0,
+      status,
+      requestIndex: arrival.requestIndex,
+      startTime: arrival.arrivedAt,
+      trail: arrival.trail,
+      color: arrival.color,
+    }
+  }
+
   private _later(fn: () => void, ms: number) {
     const id = setTimeout(() => {
       this.timers.delete(id)
@@ -354,11 +675,8 @@ class SimulationEngine {
     const activeEdgeIds = new Set<string>()
 
     // Every stored packet is travelling by construction: _makePacket is the only
-    // producer and it always sets that status, and a packet that arrives is replaced
-    // rather than re-stored. The previous `status !== 'travelling'` guard here
-    // looked defensive but was unreachable, and either branch of it was wrong —
-    // skipping leaked a branch and hung the completion check, decrementing risked
-    // double-counting against _onArrival.
+    // producer of edge packets and it always sets that status. Parked packets live in
+    // the node runtimes, not here, so they are never advanced.
     for (const packet of this.activePackets) {
       const updatedPacket = {
         ...packet,
@@ -366,24 +684,31 @@ class SimulationEngine {
       }
 
       if (updatedPacket.progress >= 1) {
-        // Arrived at target node
-        this._onArrival(updatedPacket, nodes, edges, config, nextPackets)
+        // Reached the far node. It does not continue immediately any more: it has to
+        // be served first, and may have to queue for a server.
+        this._onArrival(updatedPacket, nodes, edges, config, now)
       } else {
         activeEdgeIds.add(packet.edgeId)
         nextPackets.push(updatedPacket)
       }
     }
 
-    // Packets created by _onArrival start this frame too. Without them the edge
+    // Complete service, promote waiters, and put whatever departed onto its edges.
+    nextPackets.push(...this._advanceNodes(now, dtMs, nodes, edges, config))
+
+    // Packets created this frame start highlighted too. Without them the edge
     // highlight blinked off for one frame at every hop.
     for (const packet of nextPackets) activeEdgeIds.add(packet.edgeId)
 
     this.activePackets = nextPackets
-    useSimulationStore.getState().setPackets([...nextPackets])
+    // Parked packets are drawn but not advanced, so they are appended for the
+    // renderer only and never enter activePackets.
+    useSimulationStore.getState().setPackets([...nextPackets, ...this._parkedPackets()])
     useSimulationStore.getState().setActiveEdges(activeEdgeIds)
 
     // Check completion. A request is outstanding while it still has a live branch,
-    // so an empty branch table means the whole run has drained.
+    // so an empty branch table means the whole run has drained — including anything
+    // still queued or being served, which holds a branch open.
     if (this.activePackets.length === 0 && this.branches.size === 0) {
       if (config.loop && state.stats.totalRequests < config.maxRequests) {
         this._dispatchBatch(nodes, edges, config)
@@ -396,12 +721,19 @@ class SimulationEngine {
     this.rafId = requestAnimationFrame(this._tick.bind(this))
   }
 
+  /**
+   * A packet has reached the far end of its edge.
+   *
+   * It does not continue from here. It is handed to the target node, which either
+   * serves it straight away or makes it wait — that deferral is what allows a node to
+   * be a bottleneck. Fan-out happens later, in _departNode.
+   */
   private _onArrival(
     packet: SimPacket,
     nodes: ArchitectureNode[],
     edges: ArchitectureEdge[],
     config: SimConfig,
-    nextPackets: SimPacket[],
+    now: number,
   ) {
     // Determine failure. The dice roll is supplied here so the rule itself stays a
     // pure function — see failure.ts.
@@ -411,9 +743,9 @@ class SimulationEngine {
     const isSlow = isSlowEdge(packet.edgeId, config.failure)
     const status: 'ok' | 'error' | 'slow' = failed ? 'error' : isSlow ? 'slow' : 'ok'
 
-    // Modelled, not measured. The old version divided wall-clock animation time by
-    // the path length and scaled by the speed multiplier, so dragging the speed
-    // slider changed the latency the panel reported.
+    // Transit cost only. What the node itself adds — queue wait plus service — is
+    // measured when service completes and lands in the node's own stats, so the log
+    // reports the hop and the panel reports the node.
     const travelMs = hopLatencyMs(BASE_LATENCY_MS, isSlow, config.failure.slowFactor)
 
     // Log entry
@@ -433,18 +765,14 @@ class SimulationEngine {
     }
     useSimulationStore.getState().addLogEntry(logEntry)
 
-    // Node stat
+    // Arrival count and error count only. Timing and contention figures come from
+    // _nodeStatPatch once the node has actually done the work — a request that has
+    // arrived but is still queueing has not been served yet.
     const existingStat = useSimulationStore.getState().nodeStats[packet.targetId]
-    const reqIn = (existingStat?.requestsIn ?? 0) + 1
-    const totalLat = (existingStat?.totalLatencyMs ?? 0) + travelMs
-    const errors = (existingStat?.errors ?? 0) + (failed ? 1 : 0)
     useSimulationStore.getState().updateNodeStat(packet.targetId, {
       nodeId: packet.targetId,
-      requestsIn: reqIn,
-      totalLatencyMs: totalLat,
-      avgLatencyMs: totalLat / reqIn,
-      errors,
-      isBottleneck: totalLat / reqIn > BOTTLENECK_MS,
+      requestsIn: (existingStat?.requestsIn ?? 0) + 1,
+      errors: (existingStat?.errors ?? 0) + (failed ? 1 : 0),
     })
 
     // Pulse target node
@@ -457,53 +785,28 @@ class SimulationEngine {
 
     if (failed) {
       // Mark the edge as failed visually. This branch dies here; siblings continue.
+      // A node that is down does not serve, so nothing is queued for it.
       useSimulationStore.getState().setFailedEdge(packet.edgeId)
       this._endBranch(packet.requestIndex, true)
       return
     }
 
-    // Fan out to everything downstream of the node just reached. The route is
-    // decided here rather than pre-planned, so a server that talks to a cache, a
-    // database and a queue lights up all three.
-    //
-    // Truncated against the global ceiling: branching is multiplicative, and a mesh
-    // diagram would otherwise keep doubling until the frame budget is gone.
-    const budget = MAX_LIVE_PACKETS - nextPackets.length
-    const onward =
-      budget > 0 ? nextHops(this.graph, packet.targetId, packet.trail).slice(0, budget) : []
-
-    if (onward.length === 0) {
-      // End of the flow for this branch — a sink node, a cycle already visited, or
-      // the depth cap.
-      this._endBranch(packet.requestIndex, false)
-      return
-    }
-
-    // This branch becomes its children, so retire it once they are registered;
-    // doing it in the other order could momentarily drop the count to zero and
-    // complete the request early.
-    let spawned = 0
-    for (const hop of onward) {
-      const next = this._makePacket(
-        packet.requestIndex,
-        packet.color,
-        packet.targetId,
-        hop,
-        packet.trail,
-        nodes,
-        edges,
-        config
-      )
-      if (next) {
-        nextPackets.push(next)
-        spawned++
-      }
-    }
-    this._endBranch(packet.requestIndex, false)
-
-    // Every candidate edge vanished mid-flight; nothing was registered to replace
-    // this branch, and _endBranch above has already accounted for it.
-    if (spawned === 0) return
+    // Hand off to the node. It holds the branch open until service completes, so the
+    // request is still outstanding while it sits in a queue.
+    this._admit(
+      {
+        packetId: packet.id,
+        requestIndex: packet.requestIndex,
+        color: packet.color,
+        nodeId: packet.targetId,
+        edgeId: packet.edgeId,
+        fromNodeId: packet.sourceId,
+        trail: packet.trail,
+        arrivedAt: now,
+      },
+      now,
+      config
+    )
   }
 
   // Estimate edge length from node positions for proportional travel time
