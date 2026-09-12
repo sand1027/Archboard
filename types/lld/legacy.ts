@@ -1,8 +1,10 @@
-// Low-level design (LLD) node and catalog types
+// Legacy LLD node data types.
+//
+// Retained because the global board and data/templates still contain umlClass /
+// umlEntity / umlLifeline / icon nodes. Superseded by types/lld/shapes.ts; these
+// go away with the one-time node migration.
 
 export type BoardMode = 'hld' | 'lld'
-
-export type LldLibraryTab = 'flowchart' | 'uml' | 'er' | 'sequence' | 'icons'
 
 export type RelationKind =
   | 'association'
@@ -76,18 +78,3 @@ export interface IconNodeData extends Record<string, unknown> {
   height?: number
 }
 
-export interface LldCatalogItem {
-  id: string
-  name: string
-  description: string
-  tab: LldLibraryTab
-  tags: string[]
-  /** How to spawn the node on drop / click */
-  spawn:
-    | { kind: 'shape'; shapeType: string; defaultLabel?: string; w?: number; h?: number }
-    | { kind: 'umlClass'; stereotype?: UmlClassStereotype; name?: string }
-    | { kind: 'umlEntity'; weak?: boolean; name?: string }
-    | { kind: 'umlLifeline'; lifelineKind: LifelineKind; label?: string }
-    | { kind: 'icon'; iconName: string; label?: string }
-    | { kind: 'note'; label?: string }
-}
