@@ -1,10 +1,14 @@
 'use client'
 
 import { memo, useState } from 'react'
-import { NodeResizer, type NodeProps } from '@xyflow/react'
+import { Handle, Position, NodeResizer, type NodeProps } from '@xyflow/react'
 import type { Node } from '@xyflow/react'
 import type { ArchitectureNodeData } from '@/types/architecture'
 import { useSimulationStore } from '@/store/simulationStore'
+import { useUiStore } from '@/store/uiStore'
+import { useRouter } from 'next/navigation'
+import { lldWorkspacePath, useDiagramRouteId } from '@/hooks/useDiagramRouteId'
+import { Layers } from 'lucide-react'
 import Image from 'next/image'
 
 type ArchitectureNodeType = Node<ArchitectureNodeData, 'architecture'>
@@ -34,8 +38,17 @@ const LABEL_H   = 20
 
 function ArchitectureNode({ id, data, selected, width, height }: NodeProps<ArchitectureNodeType>) {
   const [imgError, setImgError] = useState(false)
+  // Deterministic handle visibility. Relying on Tailwind's `group-hover:` makes
+  // this depend on an ancestor keeping the `group` class, which is fragile.
+  const [hovered, setHovered] = useState(false)
 
   // Simulation glow — only subscribes when simulating
+  const router = useRouter()
+  const diagramRouteId = useDiagramRouteId()
+  // Arming a connector preset in the library means "I am drawing connections",
+  // so the whole icon becomes the drag source. Selector-scoped so nodes only
+  // re-render when the mode itself flips.
+  const connectMode = useUiStore((s) => s.armedConnectionType !== null)
   const simNodeStatus = useSimulationStore((s) => s.nodeStatuses[id])
   const simStatus     = useSimulationStore((s) => s.status)
   const isSimulating  = simStatus === 'running' || simStatus === 'paused'
@@ -49,19 +62,45 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
   const h = height ?? DEFAULT_H
   const iconSize = Math.max(24, Math.min(w, h - LABEL_H - 4))
 
+  const handlesVisible = !isSimulating && (hovered || !!selected || connectMode)
+
   const simStyle = simNodeStatus ? SIM_STATUS_STYLES[simNodeStatus] : null
 
   return (
     <div
-      className="relative flex flex-col items-center justify-start select-none bg-transparent"
-      style={{ width: w, height: h }}
+      className="group relative flex flex-col items-center justify-start select-none bg-transparent"
+      style={{ width: w, height: h, cursor: connectMode && !isSimulating ? 'crosshair' : undefined }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       {selected && (
         <NodeResizer
-          minWidth={48} minHeight={56} isVisible keepAspectRatio
+          minWidth={48}
+          minHeight={56}
+          isVisible
+          keepAspectRatio
           lineClassName="!border-blue-400"
           handleClassName="!bg-white !border-2 !border-blue-400 !rounded-sm !w-2.5 !h-2.5"
         />
+      )}
+
+      {/* Discoverable entry to this component's low-level design. Also
+          available via right-click and double-click. */}
+      {!isSimulating && (
+        <button
+          type="button"
+          title={`Open low-level design for ${data.label}`}
+          aria-label={`Open low-level design for ${data.label}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            const path = lldWorkspacePath(diagramRouteId, id)
+            if (path) router.push(path)
+          }}
+          className="nodrag absolute -right-1.5 -top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-opacity hover:border-blue-300 hover:text-blue-600"
+          style={{ opacity: handlesVisible ? 1 : 0, pointerEvents: handlesVisible ? 'all' : 'none' }}
+        >
+          <Layers className="h-3 w-3" />
+        </button>
       )}
 
       {/* Simulation glow ring */}
@@ -76,9 +115,18 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
         />
       )}
 
-      {/* SVG icon */}
+      {/*
+        SVG icon.
+
+        This is the positioning context for the handles, which is the whole point:
+        React Flow places a handle against its nearest positioned ancestor, so
+        anchoring them here puts them on the artwork's edges automatically at any
+        size. Computing pixel offsets from the `width`/`height` props instead went
+        wrong whenever those disagreed with the rendered box — which is the case
+        for nodes sized through `node.style`, e.g. anything from a template.
+      */}
       <div
-        className="flex items-center justify-center bg-transparent"
+        className="relative flex items-center justify-center bg-transparent"
         style={{
           width: w,
           height: h - LABEL_H,
@@ -86,6 +134,61 @@ function ArchitectureNode({ id, data, selected, width, height }: NodeProps<Archi
           transition: 'opacity 0.2s',
         }}
       >
+        {/* Whole-icon drag source, only while a connector preset is armed. */}
+        {connectMode && !isSimulating && (
+          <>
+            <Handle
+              type="source"
+              id="body"
+              position={Position.Right}
+              title="Drag to connect"
+              className="!rounded-lg !border-0 !bg-transparent"
+              style={{
+                position: 'absolute',
+                inset: 0,
+                width: '100%',
+                height: '100%',
+                right: 'auto',
+                bottom: 'auto',
+                transform: 'none',
+                minWidth: 0,
+                minHeight: 0,
+                zIndex: 10,
+              }}
+            />
+            <div
+              className="pointer-events-none absolute -inset-1 rounded-xl"
+              style={{ border: `1.5px dashed ${accentColor}`, opacity: 0.55 }}
+            />
+          </>
+        )}
+
+        {/* One connection point per side of the artwork. */}
+        {!isSimulating &&
+          (
+            [
+              [Position.Top, 't'],
+              [Position.Right, 'r'],
+              [Position.Bottom, 'b'],
+              [Position.Left, 'l'],
+            ] as const
+          ).map(([position, hid]) => (
+            <Handle
+              key={hid}
+              type="source"
+              id={hid}
+              position={position}
+              title="Drag to connect"
+              className="!h-3 !w-3 !rounded-full !border-2 !border-white !transition-all hover:!h-4 hover:!w-4"
+              style={{
+                background: accentColor,
+                opacity: handlesVisible ? 1 : 0,
+                pointerEvents: handlesVisible ? 'all' : 'none',
+                zIndex: 25,
+              }}
+            />
+          ))}
+
         {!imgError ? (
           <Image
             src={data.icon}
