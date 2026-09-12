@@ -1,5 +1,6 @@
 import type { ComponentCategory } from '@/types/architecture'
 import type { BottleneckSeverity } from '@/types/simulation'
+import { BEHAVIORS } from '@/data/components/behaviors'
 
 /**
  * Node capacity, and the rule for calling one a bottleneck.
@@ -93,13 +94,55 @@ function readCategory(data: unknown): ComponentCategory | undefined {
   return typeof value === 'string' ? (value as ComponentCategory) : undefined
 }
 
+function readString(data: unknown, key: string): string | undefined {
+  if (!data || typeof data !== 'object') return undefined
+  const value = (data as Record<string, unknown>)[key]
+  return typeof value === 'string' ? value : undefined
+}
+
 /**
- * Capacity for a node: explicit overrides on the node win, then the profile for its
- * category, then the generic default.
+ * Concurrency floor for a component that buffers.
+ *
+ * A queue, topic or event bus exists precisely to absorb a burst its consumers cannot
+ * keep up with. Modelling one as a narrow synchronous resource made it queue, wait, and
+ * get reported as the bottleneck — the opposite of what it is doing. Giving async
+ * components deep capacity means backpressure shows up at the consumer that is actually
+ * behind, which is the useful answer.
+ */
+export const ASYNC_CONCURRENCY = 128
+
+/** The authored simulation hints for a component, if the registry has any. */
+export function behaviourHints(componentId: string | undefined) {
+  return componentId ? BEHAVIORS[componentId]?.sim : undefined
+}
+
+/**
+ * Capacity for a node.
+ *
+ * Precedence, most specific first:
+ *   1. Explicit overrides on the node — the user said so.
+ *   2. The component's authored `sim` hints. 193 of the 233 registry entries carry a
+ *      real latency, from a 0ms DNS lookup to a 500ms analytics query, and using them
+ *      beats guessing from the category: "databases" covers both a key-value store and
+ *      a warehouse.
+ *   3. The category profile.
+ *   4. The generic default.
  */
 export function nodeCapacity(data: unknown): NodeCapacity {
   const category = readCategory(data)
-  const base = (category && CAPACITY_BY_CATEGORY[category]) || GENERIC_CAPACITY
+  const categoryBase = (category && CAPACITY_BY_CATEGORY[category]) || GENERIC_CAPACITY
+
+  const hints = behaviourHints(readString(data, 'componentId'))
+
+  const base: NodeCapacity = {
+    serviceMs:
+      typeof hints?.latencyMs === 'number' && Number.isFinite(hints.latencyMs)
+        ? clamp(hints.latencyMs, MIN_SERVICE_MS, MAX_SERVICE_MS, categoryBase.serviceMs)
+        : categoryBase.serviceMs,
+    concurrency: hints?.async
+      ? Math.max(categoryBase.concurrency, ASYNC_CONCURRENCY)
+      : categoryBase.concurrency,
+  }
 
   const serviceMs = readNumber(data, 'serviceMs')
   const concurrency = readNumber(data, 'concurrency')
