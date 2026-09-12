@@ -94,7 +94,10 @@ html, body, #__next {
   color: #94a3b8;
 }
 
-/* Simulation marching-ants edge animation */
+/* Text shape node — show a subtle hover border so users know they can drag it */
+.react-flow__node-shape:hover .group > div:first-child {
+  border-color: #CBD5E1 !important;
+}
 @keyframes sim-flow {
   from { stroke-dashoffset: 24; }
   to   { stroke-dashoffset: 0;  }
