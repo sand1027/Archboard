@@ -2,83 +2,59 @@
 
 import { useEffect, useRef } from 'react'
 import { useDiagramStore } from '@/store/diagramStore'
-import { useUiStore } from '@/store/uiStore'
-import type { BoardMode, BoardSnapshot } from '@/types/diagram'
+import { useLldStore } from '@/store/lldStore'
+import {
+  applyRawDocument,
+  buildDocument,
+  migrateDocument,
+} from '@/lib/persistence/documentPayload'
 
-const LEGACY_KEY = 'archboard-diagram'
-const STORAGE_KEY = 'archboard-diagram-v2'
+const LEGACY_KEYS = ['archboard-diagram', 'archboard-diagram-v2']
+const STORAGE_KEY = 'archboard-diagram-v3'
 const AUTOSAVE_DELAY = 1500
-
-function emptyBoard(name: string): BoardSnapshot {
-  return {
-    diagramId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    diagramName: name,
-    nodes: [],
-    edges: [],
-    viewport: { x: 0, y: 0, zoom: 1 },
-  }
-}
-
-function migrateLegacy(): {
-  activeBoard: BoardMode
-  boards: { hld: BoardSnapshot; lld: BoardSnapshot }
-} | null {
-  try {
-    const raw = localStorage.getItem(LEGACY_KEY)
-    if (!raw) return null
-    const data = JSON.parse(raw)
-    if (!data?.nodes || !data?.edges) return null
-    return {
-      activeBoard: 'hld',
-      boards: {
-        hld: {
-          diagramId: data.id ?? `migrated-${Date.now()}`,
-          diagramName: data.name ?? 'Untitled Diagram',
-          nodes: data.nodes,
-          edges: data.edges,
-          viewport: data.viewport ?? { x: 0, y: 0, zoom: 1 },
-        },
-        lld: emptyBoard('Untitled LLD'),
-      },
-    }
-  } catch {
-    return null
-  }
-}
 
 export function useDiagramPersistence() {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // ── hydrate once, migrating forward from any older key ────────────────────
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const data = JSON.parse(saved)
-        if (data?.boards?.hld && data?.boards?.lld) {
-          const activeBoard = data.activeBoard === 'lld' ? 'lld' : 'hld'
-          useDiagramStore.getState().hydrateBoards({
-            activeBoard,
-            boards: data.boards,
-          })
-          useUiStore.getState().setBoardMode(activeBoard)
-          return
-        }
-      }
+      const current = localStorage.getItem(STORAGE_KEY)
+      if (current && applyRawDocument(JSON.parse(current))) return
 
-      const migrated = migrateLegacy()
-      if (migrated) {
-        useDiagramStore.getState().hydrateBoards(migrated)
-        useUiStore.getState().setBoardMode(migrated.activeBoard)
+      for (const key of LEGACY_KEYS) {
+        const raw = localStorage.getItem(key)
+        if (!raw) continue
+
+        const migrated = migrateDocument(JSON.parse(raw))
+        if (!migrated) continue
+
+        applyRawDocument(migrated)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
-        localStorage.removeItem(LEGACY_KEY)
+        localStorage.removeItem(key)
+        return
       }
     } catch {
-      // Silently ignore corrupt storage
+      // Corrupt storage — fall through to store defaults.
     }
   }, [])
 
+  // ── debounced autosave, covering both the HLD boards and LLD workspaces ───
   useEffect(() => {
-    const unsub = useDiagramStore.subscribe(
+    const scheduleSave = () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
+      autosaveTimer.current = setTimeout(() => {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(buildDocument()))
+        } catch (err) {
+          // Quota exceeded is the realistic failure here, and the document now
+          // grows with LLD content. Surface it instead of failing silently.
+          console.error('[archboard] local autosave failed', err)
+        }
+      }, AUTOSAVE_DELAY)
+    }
+
+    const unsubDiagram = useDiagramStore.subscribe(
       (state) => ({
         nodes: state.nodes,
         edges: state.edges,
@@ -87,20 +63,14 @@ export function useDiagramPersistence() {
         activeBoard: state.activeBoard,
         viewport: state.viewport,
       }),
-      () => {
-        if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
-        autosaveTimer.current = setTimeout(() => {
-          try {
-            const payload = useDiagramStore.getState().getPersistPayload()
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-          } catch {
-            // Storage full or unavailable
-          }
-        }, AUTOSAVE_DELAY)
-      }
+      scheduleSave
     )
+
+    const unsubLld = useLldStore.subscribe((state) => state.workspaces, scheduleSave)
+
     return () => {
-      unsub()
+      unsubDiagram()
+      unsubLld()
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
   }, [])
