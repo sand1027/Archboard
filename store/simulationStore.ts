@@ -13,6 +13,31 @@ const DEFAULT_FAILURE: FailureConfig = {
   slowFactor: 3,
 }
 
+/**
+ * A node's stats before it has seen any traffic.
+ *
+ * Extracted from updateNodeStat's inline literal, which needed a cast to satisfy
+ * NodeStat and silently went stale every time a field was added.
+ */
+function emptyNodeStat(nodeId: string): NodeStat {
+  return {
+    nodeId,
+    requestsIn: 0,
+    requestsOut: 0,
+    errors: 0,
+    avgLatencyMs: 0,
+    totalLatencyMs: 0,
+    isBottleneck: false,
+    queueDepth: 0,
+    maxQueueDepth: 0,
+    avgWaitMs: 0,
+    utilisation: 0,
+    serviceMs: 0,
+    concurrency: 1,
+    severity: 'none',
+  }
+}
+
 const DEFAULT_CONFIG: SimConfig = {
   mode: 'request-flow',
   startNodeId: '',
@@ -52,6 +77,7 @@ interface SimStore extends SimulationState {
   updateNodeStat: (nodeId: string, patch: Partial<NodeStat>) => void
   setNodeStatus: (nodeId: string, status: NodeSimStatus) => void
   clearNodeStatus: (nodeId: string) => void
+  updateNodeStats: (patches: Record<string, Partial<NodeStat>>) => void
   setActiveEdges: (edgeIds: Set<string>) => void
   setFailedEdge: (edgeId: string) => void
   updateStats: (patch: Partial<SimStats>) => void
@@ -129,12 +155,28 @@ export const useSimulationStore = create<SimStore>()((set, get) => ({
     set((s) => ({
       nodeStats: {
         ...s.nodeStats,
-        [nodeId]: { ...((s.nodeStats[nodeId] ?? {
-          nodeId, requestsIn: 0, requestsOut: 0,
-          errors: 0, avgLatencyMs: 0, totalLatencyMs: 0, isBottleneck: false,
-        }) as NodeStat), ...patch },
+        [nodeId]: { ...(s.nodeStats[nodeId] ?? emptyNodeStat(nodeId)), ...patch },
       },
     })),
+
+  /**
+   * Apply many node patches in one update.
+   *
+   * The engine refreshes contention figures for every participating node on every
+   * frame. Doing that through updateNodeStat meant one store notification per node
+   * per frame, so a dozen nodes at 60fps woke every subscriber 720 times a second.
+   */
+  updateNodeStats: (patches) =>
+    set((s) => {
+      const entries = Object.entries(patches)
+      if (entries.length === 0) return s
+
+      const nodeStats = { ...s.nodeStats }
+      for (const [nodeId, patch] of entries) {
+        nodeStats[nodeId] = { ...(nodeStats[nodeId] ?? emptyNodeStat(nodeId)), ...patch }
+      }
+      return { nodeStats }
+    }),
 
   setNodeStatus: (nodeId, status) =>
     set((s) => ({ nodeStatuses: { ...s.nodeStatuses, [nodeId]: status } })),
