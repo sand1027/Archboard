@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import ComponentLibrary from './library/ComponentLibrary'
 import PropertiesPanel from './inspector/PropertiesPanel'
@@ -13,6 +14,7 @@ import LldWorkspace from './lld/LldWorkspace'
 import { useDiagramPersistence } from '@/hooks/useDiagramPersistence'
 import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
+import { simulationEngine } from '@/lib/simulation/engine'
 import { STANDALONE_LLD_SCOPE } from '@/types/lld'
 
 export interface WhiteboardAppProps {
@@ -34,6 +36,12 @@ function AppInner({
   // Autosave must survive the HLD↔LLD swap, so it is owned here rather than
   // by CanvasShell, which unmounts in LLD mode.
   useDiagramPersistence()
+
+  // The engine is a module singleton driving its own animation frames. Nothing
+  // stopped it when the editor went away, so navigating to the dashboard left a
+  // loop running and writing packets into the store for a canvas that no longer
+  // existed.
+  useEffect(() => () => simulationEngine.reset(), [])
 
   const libraryOpen = useUiStore((s) => s.libraryOpen)
   const inspectorOpen = useUiStore((s) => s.inspectorOpen)
