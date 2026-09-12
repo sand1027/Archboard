@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useRef, useEffect } from 'react'
+import { useCallback, useRef, useEffect, useMemo } from 'react'
 import {
   ReactFlow,
   Background,
   BackgroundVariant,
   MiniMap,
   SelectionMode,
+  ConnectionMode,
+  type Connection,
   MarkerType,
   Panel,
   type NodeTypes,
@@ -25,7 +27,7 @@ import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
 import { useSimulationStore } from '@/store/simulationStore'
 import { componentRegistry } from '@/data/components'
-import type { ArchitectureNode } from '@/types/diagram'
+import type { ArchitectureNode, ArchitectureEdge as ArchitectureEdgeType } from '@/types/diagram'
 import type { FrameNodeData, ShapeNodeData } from '@/types/architecture'
 
 import ArchitectureNodeComponent from './ArchitectureNode'
@@ -38,8 +40,16 @@ import UmlLifelineNodeComponent from './UmlLifelineNode'
 import IconNodeComponent from './IconNode'
 import ShapesToolbar from './ShapesToolbar'
 import ContextMenuComponent from '../ui/ContextMenu'
-import { findLldItem } from '@/data/lld'
-import { spawnLldNode } from '@/lib/spawnLldNode'
+import { generateId } from '@/lib/canvas/ids'
+import { nodeBounds, centerInside, isContainerNode } from '@/lib/canvas/geometry'
+import { DND_MIME } from '@/lib/canvas/dnd'
+import { useCanvasDrop } from '@/hooks/useCanvasDrop'
+import { LldMarkerDefs, type MarkerPair } from '@/lib/canvas/markers'
+import { HLD_NOTATION } from '@/lib/canvas/hldNotation'
+import { NOTATION } from '@/lib/canvas/notation'
+import type { LldEdgeStyle } from '@/types/lld'
+import { useRouter } from 'next/navigation'
+import { lldWorkspacePath, useDiagramRouteId } from '@/hooks/useDiagramRouteId'
 import { inferConnection } from '@/lib/canvas/inferConnection'
 
 const nodeTypes: NodeTypes = {
@@ -54,10 +64,6 @@ const nodeTypes: NodeTypes = {
 
 const edgeTypes: EdgeTypes = {
   architecture: ArchitectureEdgeComponent,
-}
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 // Architecture node size (SVG icon + label — no card chrome)
@@ -95,43 +101,6 @@ function isLinearTool(tool: string) {
   return tool === 'line' || tool === 'arrow'
 }
 
-function isContainerNode(node: { type?: string; data?: Record<string, unknown> }) {
-  if (node.type === 'frame') return true
-  if (node.type !== 'shape') return false
-  const t = String(node.data?.shapeType ?? '')
-  return t !== 'line' && t !== 'arrow' && t !== 'text' && !t.startsWith('arrow')
-}
-
-function nodeBounds(node: {
-  position: { x: number; y: number }
-  width?: number
-  height?: number
-  measured?: { width?: number; height?: number }
-  style?: { width?: number | string; height?: number | string }
-}) {
-  const w =
-    node.width ??
-    node.measured?.width ??
-    (typeof node.style?.width === 'number' ? node.style.width : undefined) ??
-    100
-  const h =
-    node.height ??
-    node.measured?.height ??
-    (typeof node.style?.height === 'number' ? node.style.height : undefined) ??
-    80
-  return { x: node.position.x, y: node.position.y, w, h }
-}
-
-function centerInside(
-  child: Parameters<typeof nodeBounds>[0],
-  parent: { x: number; y: number; w: number; h: number }
-) {
-  const c = nodeBounds(child)
-  const cx = c.x + c.w / 2
-  const cy = c.y + c.h / 2
-  return cx >= parent.x && cx <= parent.x + parent.w && cy >= parent.y && cy <= parent.y + parent.h
-}
-
 type DrawSession = {
   id: string
   tool: string
@@ -147,6 +116,8 @@ type GroupDragSession = {
 }
 
 export default function Whiteboard() {
+  const router = useRouter()
+  const diagramRouteId = useDiagramRouteId()
   const reactFlowInstance = useReactFlow()
   const {
     nodes, edges,
@@ -164,6 +135,37 @@ export default function Whiteboard() {
   } = useUiStore()
 
   const isLld = activeBoard === 'lld'
+
+  // While a connector preset is armed the body drag draws an edge, so node
+  // dragging is suspended — otherwise the two gestures fight each other.
+  const armedConnectionType = useUiStore((s) => s.armedConnectionType)
+  const connectMode = armedConnectionType !== null
+
+  // Only the (glyph, colour) pairs actually in use reach <defs>. Without these
+  // the url(#…) marker references resolve to nothing and arrowheads disappear.
+  const markerPairs = useMemo<MarkerPair[]>(() => {
+    const pairs: MarkerPair[] = []
+    const push = (id: string | undefined, color: string) => {
+      if (id && id !== 'none') pairs.push({ id: id as MarkerPair['id'], color })
+    }
+
+    for (const edge of edges) {
+      // The legacy LLD board uses its own RelationKind union, which only
+      // partially overlaps LldEdgeKind — so look it up leniently and fall back
+      // to the HLD table.
+      const relationKind = edge.data?.relationKind as string | undefined
+      const style =
+        (relationKind
+          ? (NOTATION as Record<string, LldEdgeStyle | undefined>)[relationKind]
+          : undefined) ?? HLD_NOTATION[edge.data?.connectionType ?? 'synchronous']
+      if (!style) continue
+      for (const color of [style.stroke, '#3B82F6']) {
+        push(style.startMarker, color)
+        push(style.endMarker, color)
+      }
+    }
+    return pairs
+  }, [edges])
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const drawSession = useRef<DrawSession | null>(null)
@@ -185,6 +187,9 @@ export default function Whiteboard() {
         setActiveTool(map[e.key.toLowerCase()])
       }
       if (e.key === 'Escape') {
+        // Also disarm the connector preset, so Escape always returns the canvas
+        // to plain select-and-move.
+        useUiStore.getState().setArmedConnection(null, null)
         // Cancel in-progress draw
         if (drawSession.current) {
           useDiagramStore.getState().deleteNode(drawSession.current.id)
@@ -223,123 +228,154 @@ export default function Whiteboard() {
     [onEdgesChange, snapshotBeforeChange]
   )
 
+  /**
+   * Side handles that always exist on a node. Anything else — notably the
+   * whole-icon `body` handle, which only mounts while a connector preset is
+   * armed — must not be persisted: once it unmounts React Flow cannot resolve
+   * the endpoint and the edge collapses toward the canvas origin.
+   */
+  const persistableHandle = useCallback((handle: string | null | undefined) => {
+    if (!handle) return undefined
+    return /^[trbl](-in)?$/.test(handle) ? handle : undefined
+  }, [])
+
   // Build edge with active style applied + behavior inference
   const handleConnect: OnConnect = useCallback(
     (connection) => {
+      if (!connection.source || !connection.target) return
       snapshotBeforeChange()
-      const { activeEdgeStyle: es } = useUiStore.getState()
+
+      const {
+        activeEdgeStyle: es,
+        armedConnectionType,
+        armedProtocol,
+      } = useUiStore.getState()
       const currentNodes = useDiagramStore.getState().nodes
 
-      // ── Auto-infer label / protocol / connectionType from component behaviors ──
-      const inferred = inferConnection(connection, currentNodes)
+      // A connector preset armed in the library wins over inference — the user
+      // said explicitly what they meant.
+      const inferred = armedConnectionType
+        ? {
+            connectionType: armedConnectionType,
+            protocol: armedProtocol ?? undefined,
+            label: undefined,
+            animated: undefined,
+          }
+        : inferConnection(connection, currentNodes)
 
-      const markerStart = es.startArrow !== 'none'
-        ? { type: es.startArrow as any }
-        : undefined
-      const markerEnd = es.endArrow !== 'none'
-        ? { type: es.endArrow as any, width: 16, height: 16 }
-        : undefined
+      // With a preset armed, leave markers and stroke unset so HLD_NOTATION owns
+      // them. Stamping them here is what previously masked the notation table.
+      const useNotation = Boolean(armedConnectionType)
 
-      const dash = es.strokeStyle === 'dashed'
-        ? `${es.strokeWidth * 4},${es.strokeWidth * 3}`
-        : es.strokeStyle === 'dotted'
-        ? `${es.strokeWidth},${es.strokeWidth * 2}`
-        : undefined
+      const markerStart =
+        !useNotation && es.startArrow !== 'none'
+          ? { type: es.startArrow as MarkerType }
+          : undefined
+      const markerEnd =
+        !useNotation && es.endArrow !== 'none'
+          ? { type: es.endArrow as MarkerType, width: 16, height: 16 }
+          : undefined
 
-      const edge = {
-        ...connection,
+      const dash =
+        es.strokeStyle === 'dashed'
+          ? `${es.strokeWidth * 4},${es.strokeWidth * 3}`
+          : es.strokeStyle === 'dotted'
+            ? `${es.strokeWidth},${es.strokeWidth * 2}`
+            : undefined
+
+      const edge: ArchitectureEdgeType = {
         id: generateId(),
         type: 'architecture',
+        source: connection.source,
+        target: connection.target,
+        sourceHandle: persistableHandle(connection.sourceHandle),
+        targetHandle: persistableHandle(connection.targetHandle),
         animated: inferred.animated ?? es.animated,
         markerStart,
         markerEnd,
-        style: {
-          stroke: es.strokeColor,
-          strokeWidth: es.strokeWidth,
-          strokeDasharray: dash,
-        },
+        style: useNotation
+          ? undefined
+          : {
+              stroke: es.strokeColor,
+              strokeWidth: es.strokeWidth,
+              strokeDasharray: dash,
+            },
         data: {
-          // Inferred values come first; user's edge style preset can override protocol
           connectionType: inferred.connectionType ?? 'synchronous',
           protocol: inferred.protocol ?? 'HTTPS',
           label: inferred.label ?? '',
-          edgeLineStyle: es.lineStyle,
+          edgeLineStyle: useNotation ? undefined : es.lineStyle,
         },
       }
-      useDiagramStore.getState().onConnect(connection)
-      // Override the just-added edge with full styling
-      setTimeout(() => {
-        useDiagramStore.getState().setEdges(
-          useDiagramStore.getState().edges.map((e) =>
-            e.source === connection.source && e.target === connection.target
-              ? { ...e, ...edge } as typeof e
-              : e
-          )
-        )
-      }, 0)
+
+      // Appended in one step. The previous version called store.onConnect and
+      // then patched the result in a setTimeout, matching by source+target —
+      // which reassigned the same new id to every edge between that pair and
+      // produced duplicate React keys.
+      const store = useDiagramStore.getState()
+      store.setEdges([...store.edges, edge])
     },
-    [snapshotBeforeChange]
+    [snapshotBeforeChange, persistableHandle]
+  )
+
+  /**
+   * Loose connection mode accepts any handle as either end, which also means a
+   * node can be dragged onto itself. Frames and text are scenery, not endpoints.
+   */
+  const isValidHldConnection = useCallback(
+    (connection: Connection | Edge) => {
+      if (!connection.source || !connection.target) return false
+      if (connection.source === connection.target) return false
+
+      const current = useDiagramStore.getState().nodes
+      const source = current.find((n) => n.id === connection.source)
+      const target = current.find((n) => n.id === connection.target)
+      if (!source || !target) return false
+
+      const connectableType = (node: typeof source) => {
+        if (node.type === 'frame') return false
+        if (node.type === 'shape') return String(node.data.shapeType ?? '') !== 'text'
+        return true
+      }
+      return connectableType(source) && connectableType(target)
+    },
+    []
   )
 
   // ── drag-and-drop from sidebar ─────────────────────────────────────────────
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'copy'
-  }, [])
+  // Shared with the LLD workspace canvas via useCanvasDrop; LLD is checked
+  // first so an LLD payload never falls through to the component branch.
+  const { onDragOver: handleDragOver, onDrop: handleDrop } = useCanvasDrop([
+    {
+      mime: DND_MIME.hldComponent,
+      onDrop: (componentId, position) => {
+        const component = componentRegistry.find((c) => c.id === componentId)
+        if (!component) return
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-
-      const lldId = e.dataTransfer.getData('application/archboard-lld')
-      if (lldId) {
-        const item = findLldItem(lldId)
-        if (!item) return
-        const position = reactFlowInstance.screenToFlowPosition({
-          x: e.clientX,
-          y: e.clientY,
-        })
         snapshotBeforeChange()
-        addNode(spawnLldNode(item, position))
-        return
-      }
-
-      const componentId = e.dataTransfer.getData('application/archboard-component')
-      if (!componentId) return
-      const component = componentRegistry.find((c) => c.id === componentId)
-      if (!component) return
-
-      // Cursor maps to icon center (matches setDragImage hotspot)
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: e.clientX,
-        y: e.clientY,
-      })
-      position.x -= ARCH_NODE_W / 2
-      position.y -= ARCH_NODE_H / 2
-
-      snapshotBeforeChange()
-      const node: ArchitectureNode = {
-        id: generateId(),
-        type: 'architecture',
-        position,
-        width: ARCH_NODE_W,
-        height: ARCH_NODE_H,
-        style: { width: ARCH_NODE_W, height: ARCH_NODE_H },
-        connectable: false,
-        zIndex: 10,
-        data: {
-          componentId: component.id,
-          label: component.name,
-          category: component.category,
-          provider: component.provider,
-          icon: component.icon,
-          description: component.description,
-        },
-      }
-      addNode(node)
+        const node: ArchitectureNode = {
+          id: generateId(),
+          type: 'architecture',
+          // Cursor maps to icon centre (matches setDragImage hotspot)
+          position: { x: position.x - ARCH_NODE_W / 2, y: position.y - ARCH_NODE_H / 2 },
+          width: ARCH_NODE_W,
+          height: ARCH_NODE_H,
+          style: { width: ARCH_NODE_W, height: ARCH_NODE_H },
+          connectable: true,
+          zIndex: 10,
+          data: {
+            componentId: component.id,
+            label: component.name,
+            category: component.category,
+            provider: component.provider,
+            icon: component.icon,
+            description: component.description,
+          },
+        }
+        addNode(node)
+      },
     },
-    [reactFlowInstance, addNode, snapshotBeforeChange]
-  )
+  ])
 
   const buildShapeNode = useCallback(
     (
@@ -393,10 +429,10 @@ export default function Whiteboard() {
         height: h,
         // Freehand text uses custom smooth drag (same feel as shape labels)
         draggable: tool !== 'text',
-        connectable:
-          useDiagramStore.getState().activeBoard === 'lld' &&
-          !isLinearTool(tool) &&
-          tool !== 'text',
+        // Shapes are endpoints on both boards. Previously HLD shapes were
+        // spawned unconnectable, so a drawn box could never be wired to
+        // anything. Lines, arrows and text stay scenery.
+        connectable: !isLinearTool(tool) && tool !== 'text',
         zIndex: isLinearTool(tool) || tool === 'text' ? 5 : 0,
       }
     },
@@ -715,7 +751,17 @@ export default function Whiteboard() {
     []
   )
 
-  // Guard: track last double-click timestamp to prevent multi-spawn on edges
+  // Double-click an HLD component to open its LLD workspace. Only architecture
+  // nodes have internals to detail; shapes/frames/icons do not.
+  const handleNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (node.type !== 'architecture') return
+      const path = lldWorkspacePath(diagramRouteId, node.id)
+      if (path) router.push(path)
+    },
+    [router, diagramRouteId]
+  )
+
   const handleNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault()
@@ -766,6 +812,7 @@ export default function Whiteboard() {
         onNodeDragStop={handleNodeDragStop}
         onSelectionChange={handleSelectionChange}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onEdgeClick={handleEdgeClick}
         onNodeContextMenu={handleNodeContextMenu}
         onEdgeContextMenu={handleEdgeContextMenu}
@@ -777,7 +824,9 @@ export default function Whiteboard() {
           data: isLld
             ? { relationKind: 'association', label: '' }
             : { connectionType: 'synchronous', protocol: 'HTTPS' },
-          markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+          // Deliberately no markerEnd here: ArchitectureEdge resolves
+          // `markerEnd ?? relation?.end`, so setting it unconditionally would
+          // permanently mask the relation-kind arrowheads.
           animated: false,
         }}
         snapToGrid={snapToGrid}
@@ -788,8 +837,14 @@ export default function Whiteboard() {
         // Disable pan/selection/node-drag while a shape tool is active
         panOnDrag={activeTool === 'hand' || activeTool === 'select'}
         selectionOnDrag={activeTool === 'select'}
-        nodesDraggable={activeTool === 'select'}
-        nodesConnectable={isLld && activeTool === 'select'}
+        nodesDraggable={activeTool === 'select' && !connectMode}
+        nodesConnectable={activeTool === 'select'}
+        // Loose lets a drag finish on any handle rather than only a `target`
+        // one, and the radius means releasing near a component is enough.
+        // Strict mode is why dragging onto a component appeared to do nothing.
+        connectionMode={ConnectionMode.Loose}
+        connectionRadius={45}
+        isValidConnection={isValidHldConnection}
         elementsSelectable={activeTool === 'select' || activeTool === 'hand'}
         elevateNodesOnSelect={false}
         fitView={false}
@@ -798,6 +853,8 @@ export default function Whiteboard() {
         proOptions={{ hideAttribution: true }}
         className="bg-white"
       >
+        <LldMarkerDefs pairs={markerPairs} />
+
         {showGrid && (
           <Background
             variant={BackgroundVariant.Dots}
