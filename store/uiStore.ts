@@ -90,6 +90,7 @@ interface UiState {
   shortcutsModalOpen: boolean
   exportModalOpen: boolean
   simulationOpen: boolean
+  estimateOpen: boolean
 
   // Context menu
   contextMenu: {
@@ -127,6 +128,7 @@ interface UiState {
   setShortcutsModalOpen: (open: boolean) => void
   setExportModalOpen: (open: boolean) => void
   setSimulationOpen: (open: boolean) => void
+  setEstimateOpen: (open: boolean) => void
   setContextMenu: (menu: UiState['contextMenu']) => void
   hideContextMenu: () => void
   setTheme: (theme: Theme) => void
@@ -166,6 +168,7 @@ export const useUiStore = create<UiState>()(
       shortcutsModalOpen: false,
       exportModalOpen: false,
       simulationOpen: false,
+      estimateOpen: false,
       contextMenu: { visible: false, x: 0, y: 0, type: 'canvas' },
       theme: 'light',
 
@@ -204,7 +207,11 @@ export const useUiStore = create<UiState>()(
       setTemplateModalOpen: (templateModalOpen) => set({ templateModalOpen }),
       setShortcutsModalOpen: (shortcutsModalOpen) => set({ shortcutsModalOpen }),
       setExportModalOpen: (exportModalOpen) => set({ exportModalOpen }),
-      setSimulationOpen: (simulationOpen) => set({ simulationOpen }),
+      // The right rail holds one panel at a time, so opening either closes the other.
+      setSimulationOpen: (simulationOpen) =>
+        set(simulationOpen ? { simulationOpen, estimateOpen: false } : { simulationOpen }),
+      setEstimateOpen: (estimateOpen) =>
+        set(estimateOpen ? { estimateOpen, simulationOpen: false } : { estimateOpen }),
       setContextMenu: (contextMenu) => set({ contextMenu }),
       hideContextMenu: () =>
         set((state) => ({ contextMenu: { ...state.contextMenu, visible: false } })),

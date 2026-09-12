@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Download,
   LayoutTemplate, Keyboard, Grid3x3, Magnet, ZoomIn,
   ZoomOut, Maximize2, Clock, ChevronLeft,
-  CheckCircle2, Loader2, AlertCircle, LogOut, Zap,
+  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useReactFlow } from '@xyflow/react'
@@ -28,7 +28,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
   const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid, switchBoard, activeBoard } =
     useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
-  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen } =
+  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen } =
     useUiStore()
   const reactFlow = useReactFlow()
   const [lldPickerOpen, setLldPickerOpen] = useState(false)
@@ -275,6 +275,21 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
         >
           <Zap className="w-4 h-4" />
           <span>Simulate</span>
+        </button>
+
+        {/* Capacity estimate — the workload the simulation should be sized against. */}
+        <button
+          onClick={() => setEstimateOpen(!estimateOpen)}
+          title="Back-of-envelope capacity estimate"
+          className={[
+            'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border',
+            estimateOpen
+              ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
+              : 'text-gray-700 border-gray-200 bg-white hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300',
+          ].join(' ')}
+        >
+          <Calculator className="w-4 h-4" />
+          <span>Capacity</span>
         </button>
 
         {/* History button — only in cloud mode */}

@@ -14,10 +14,13 @@ import { useLldStore } from '@/store/lldStore'
 import { useUiStore } from '@/store/uiStore'
 import { generateId } from '@/lib/canvas/ids'
 import { normaliseNodesConnectable } from '@/lib/canvas/nodeConnectivity'
+import { useEstimateStore } from '@/store/estimateStore'
+import { normaliseWorkload, sanitiseOverrides } from '@/lib/estimate/workload'
 import type { BoardMode, BoardSnapshot } from '@/types/diagram'
 import type { LldWorkspace } from '@/types/lld'
+import type { WorkloadDocument } from '@/types/estimate'
 
-export const DOCUMENT_VERSION = 3
+export const DOCUMENT_VERSION = 4
 
 export interface ArchboardDocument {
   version: number
@@ -25,6 +28,11 @@ export interface ArchboardDocument {
   boards: { hld: BoardSnapshot; lld: BoardSnapshot }
   /** Keyed by HLD componentId. */
   lldWorkspaces: Record<string, LldWorkspace>
+  /**
+   * Capacity workload. Part of the design, so it travels with the diagram rather than
+   * living in browser-local settings. Absent on documents written before v4.
+   */
+  workload?: WorkloadDocument
 }
 
 export function emptyBoard(name: string): BoardSnapshot {
@@ -45,6 +53,7 @@ export function buildDocument(): ArchboardDocument {
     activeBoard,
     boards,
     lldWorkspaces: useLldStore.getState().getPersistPayload(),
+    workload: useEstimateStore.getState().getPersistPayload(),
   }
 }
 
@@ -73,6 +82,7 @@ export function migrateDocument(raw: unknown): ArchboardDocument | null {
         lld: normaliseBoard(raw.boards.lld, 'Untitled LLD', 'lld'),
       },
       lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
+      workload: normaliseWorkloadDoc(raw.workload),
     }
   }
 
@@ -92,6 +102,7 @@ export function migrateDocument(raw: unknown): ArchboardDocument | null {
         lld: emptyBoard('Untitled LLD'),
       },
       lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
+      workload: normaliseWorkloadDoc(raw.workload),
     }
   }
 
@@ -105,6 +116,8 @@ export function applyDocument(doc: ArchboardDocument): void {
     boards: doc.boards,
   })
   useLldStore.getState().hydrate(doc.lldWorkspaces)
+  // Undefined for pre-v4 documents; hydrate falls back to the default workload.
+  useEstimateStore.getState().hydrate(doc.workload)
   useUiStore.getState().setBoardMode(doc.activeBoard)
 }
 
@@ -158,6 +171,21 @@ function normaliseViewport(input: unknown): BoardSnapshot['viewport'] {
     x: num(input.x) ?? 0,
     y: num(input.y) ?? 0,
     zoom: num(input.zoom) ?? 1,
+  }
+}
+
+/**
+ * Accept a stored workload only if it is shaped like one.
+ *
+ * Returning undefined rather than a default lets hydrate() own the fallback, so there is
+ * one definition of "default workload" instead of two that can drift.
+ */
+function normaliseWorkloadDoc(input: unknown): WorkloadDocument | undefined {
+  if (!isRecord(input)) return undefined
+
+  return {
+    inputs: normaliseWorkload(input.inputs),
+    overrides: sanitiseOverrides(input.overrides),
   }
 }
 

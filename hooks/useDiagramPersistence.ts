@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useLldStore } from '@/store/lldStore'
+import { useEstimateStore } from '@/store/estimateStore'
 import {
   applyRawDocument,
   buildDocument,
@@ -68,9 +69,18 @@ export function useDiagramPersistence() {
 
     const unsubLld = useLldStore.subscribe((state) => state.workspaces, scheduleSave)
 
+    // The capacity workload is part of the document too. Without this it was written by
+    // buildDocument but nothing ever scheduled the write, so editing the estimate on its
+    // own was lost unless an unrelated node change happened to save within the window.
+    //
+    // Unselected because the workload is the whole of that store's state — its only other
+    // members are actions, which never change — so any update is a change worth saving.
+    const unsubEstimate = useEstimateStore.subscribe(scheduleSave)
+
     return () => {
       unsubDiagram()
       unsubLld()
+      unsubEstimate()
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
   }, [])
