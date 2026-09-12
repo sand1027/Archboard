@@ -66,6 +66,7 @@ interface SimStore extends SimulationState {
   toggleSlowEdge: (edgeId: string) => void
   clearFailures: () => void
   setErrorRate: (rate: number) => void
+  setSlowFactor: (factor: number) => void
 
   // Simulation lifecycle
   setStatus: (status: SimStatus) => void
@@ -129,6 +130,15 @@ export const useSimulationStore = create<SimStore>()((set, get) => ({
 
   setErrorRate: (rate) =>
     set((s) => ({ config: { ...s.config, failure: { ...s.config.failure, errorRate: rate } } })),
+
+  setSlowFactor: (factor) =>
+    set((s) => ({
+      config: {
+        ...s.config,
+        // Below 1 would make a "slow" edge faster than a normal one.
+        failure: { ...s.config.failure, slowFactor: Math.max(factor, 1) },
+      },
+    })),
 
   setStatus: (status) => set({ status }),
 
