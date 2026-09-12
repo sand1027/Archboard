@@ -179,23 +179,35 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
 
       <div className="w-px h-5 bg-gray-200" />
 
-      {/* Undo / Redo */}
-      <div className="flex items-center gap-0.5">
-        <ToolbarButton
-          onClick={handleUndo}
-          disabled={!canUndo}
-          title="Undo (⌘Z)"
-          icon={<Undo2 className="w-4 h-4" />}
-        />
-        <ToolbarButton
-          onClick={handleRedo}
-          disabled={!canRedo}
-          title="Redo (⌘⇧Z)"
-          icon={<Redo2 className="w-4 h-4" />}
-        />
-      </div>
+      {/*
+        Undo / Redo — HLD only.
 
-      <div className="w-px h-5 bg-gray-200" />
+        This toolbar survives the board swap, but these buttons act on the HLD document
+        through historyStore, so in LLD mode they silently reverted work on a canvas the
+        user could not see. LLD keeps its own per-diagram history in lldStore and offers
+        undo in its own header, so hiding them here also removes two Undo buttons that
+        did different things.
+      */}
+      {activeBoard !== 'lld' && (
+        <>
+          <div className="flex items-center gap-0.5">
+            <ToolbarButton
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (⌘Z)"
+              icon={<Undo2 className="w-4 h-4" />}
+            />
+            <ToolbarButton
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (⌘⇧Z)"
+              icon={<Redo2 className="w-4 h-4" />}
+            />
+          </div>
+
+          <div className="w-px h-5 bg-gray-200" />
+        </>
+      )}
 
       {/* Canvas controls */}
       <div className="flex items-center gap-0.5">
