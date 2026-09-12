@@ -40,7 +40,8 @@ export interface DiagramSnapshot {
   edges: ArchitectureEdge[]
 }
 
-export type BoardMode = 'hld' | 'lld'
+/** Canonical declaration lives in types/lld — re-exported here for consumers. */
+export type { BoardMode } from './lld'
 
 export interface BoardSnapshot {
   diagramId: string
