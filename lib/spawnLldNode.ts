@@ -26,7 +26,8 @@ export function spawnLldNode(
       strokeStyle: 'solid',
       opacity: 100,
       cornerRadius: spawn.shapeType === 'terminator' ? 999 : 4,
-      fontSize: 13,
+      fontSize: 10,
+      textAlign: 'right',
       textColor: '#0f172a',
     }
     return {
@@ -59,7 +60,8 @@ export function spawnLldNode(
         strokeStyle: 'solid',
         opacity: 100,
         cornerRadius: 0,
-        fontSize: 12,
+        fontSize: 10,
+        textAlign: 'right',
         textColor: '#78350F',
       } satisfies ShapeNodeData,
       style: { width: w, height: h },

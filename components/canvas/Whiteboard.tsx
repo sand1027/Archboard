@@ -76,7 +76,7 @@ const SHAPE_DEFAULTS: Record<string, { w: number; h: number }> = {
   star:          { w: 120, h: 120 },
   arrow:         { w: 160, h: 40  },
   line:          { w: 160, h: 40  },
-  text:          { w: 160, h: 60  },
+  text:          { w: 96, h: 28  },
   frame:         { w: 300, h: 220 },
   terminator:    { w: 140, h: 56  },
   document:      { w: 150, h: 110 },
@@ -369,15 +369,17 @@ export default function Whiteboard() {
       const shapeData: ShapeNodeData = {
         shapeType: tool as ShapeNodeData['shapeType'],
         label: '',
-        fill: isLinearTool(tool) ? 'transparent' : ui.defaultFill,
+        fill: tool === 'text' ? 'transparent' : isLinearTool(tool) ? 'transparent' : ui.defaultFill,
         fillOpacity: ui.defaultFillOpacity,
-        stroke: ui.defaultStroke,
-        strokeWidth: ui.defaultStrokeWidth,
+        stroke: tool === 'text' ? 'transparent' : ui.defaultStroke,
+        strokeWidth: tool === 'text' ? 0 : ui.defaultStrokeWidth,
         strokeStyle: ui.defaultStrokeStyle,
         opacity: ui.defaultOpacity,
         cornerRadius: ui.defaultCornerRadius,
-        fontSize: ui.defaultFontSize,
+        fontSize: tool === 'text' ? 14 : 10,
         textColor: ui.defaultTextColor,
+        textAlign: 'left',
+        ...(tool === 'text' ? { autoEdit: true } : {}),
         ...(endpoints ? { start: endpoints.start, end: endpoints.end } : {}),
       }
 
@@ -389,12 +391,12 @@ export default function Whiteboard() {
         style: { width: w, height: h },
         width: w,
         height: h,
-        // Flowchart shapes can connect in LLD; freehand strokes stay non-connectable
+        // Freehand text uses custom smooth drag (same feel as shape labels)
+        draggable: tool !== 'text',
         connectable:
           useDiagramStore.getState().activeBoard === 'lld' &&
           !isLinearTool(tool) &&
           tool !== 'text',
-        // Keep grouping shapes under architecture icons
         zIndex: isLinearTool(tool) || tool === 'text' ? 5 : 0,
       }
     },
@@ -449,7 +451,7 @@ export default function Whiteboard() {
         y: e.clientY,
       })
 
-      // Text: click-to-place only (no rubber-band)
+      // Text: click-to-place spawns a text shape node
       if (tool === 'text') {
         const size = SHAPE_DEFAULTS.text
         snapshotBeforeChange()
@@ -588,9 +590,46 @@ export default function Whiteboard() {
     ]
   )
 
-  const handlePaneClick = useCallback(() => {
-    hideContextMenu()
-  }, [hideContextMenu])
+  const handlePaneClick = useCallback(
+    (e: React.MouseEvent) => {
+      hideContextMenu()
+
+      // Excalidraw: double-click empty canvas → place text and start typing
+      if (e.detail !== 2) return
+      const tool = useUiStore.getState().activeTool
+      if (tool !== 'select' && tool !== 'text') return
+
+      const target = e.target as HTMLElement
+      if (!target.closest('.react-flow__pane')) return
+
+      const pos = reactFlowInstance.screenToFlowPosition({
+        x: e.clientX,
+        y: e.clientY,
+      })
+      const size = SHAPE_DEFAULTS.text
+      snapshotBeforeChange()
+      const node = buildShapeNode(
+        'text',
+        { x: pos.x - 8, y: pos.y - size.h / 2 },
+        size.w,
+        size.h
+      )
+      // Ensure auto-edit even if buildShapeNode defaults change
+      ;(node.data as ShapeNodeData).autoEdit = true
+      addNode(node)
+      setSelectedNodeIds([node.id])
+      setActiveTool('select')
+    },
+    [
+      hideContextMenu,
+      reactFlowInstance,
+      snapshotBeforeChange,
+      buildShapeNode,
+      addNode,
+      setSelectedNodeIds,
+      setActiveTool,
+    ]
+  )
 
   // ── drag container shapes/frames → move nested components with them ─────────
   const handleNodeDragStart = useCallback((_: unknown, node: Node) => {
@@ -676,6 +715,7 @@ export default function Whiteboard() {
     []
   )
 
+  // Guard: track last double-click timestamp to prevent multi-spawn on edges
   const handleNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: Node) => {
       e.preventDefault()

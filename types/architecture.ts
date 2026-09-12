@@ -166,6 +166,9 @@ export interface FrameNodeData extends Record<string, unknown> {
   color?: string
   width?: number
   height?: number
+  /** Label position within the frame — defaults to top-left (8, 8) */
+  labelX?: number
+  labelY?: number
 }
 
 // ─── Shape system ─────────────────────────────────────────────────────────────
@@ -213,7 +216,9 @@ export interface ShapeNodeData extends Record<string, unknown> {
   fontWeight?: FontWeight
   textAlign?: TextAlign
   textColor?: string
-  /** Node-local position where text sits (set by double-click) */
+  /** Enter edit mode once after spawn (Excalidraw-style) */
+  autoEdit?: boolean
+  /** Node-local position of the shape label (draggable) */
   textX?: number
   textY?: number
   /** Node-local endpoints for freehand line / arrow */

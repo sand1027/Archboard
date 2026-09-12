@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { Trash2, Copy } from 'lucide-react'
+import { Trash2, Copy, AlignLeft, AlignCenter, AlignRight } from 'lucide-react'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
 import type { ShapeNodeData, StrokeStyle, FontWeight, TextAlign } from '@/types/architecture'
@@ -9,22 +9,56 @@ import type { Node } from '@xyflow/react'
 
 type ShapeNodeFull = Node<ShapeNodeData, 'shape'>
 
-const PRESET_FILLS = [
-  'transparent','#ffffff','#F1F5F9','#EFF6FF','#F0FDF4',
-  '#FEFCE8','#FFF1F2','#F5F3FF','#BFDBFE','#A7F3D0',
-  '#FDE68A','#FECDD3','#C7D2FE','#3B82F6','#10B981',
-  '#F59E0B','#EF4444','#8B5CF6','#1F2937','#000000',
+// ─── Colour palette ────────────────────────────────────────────────────────────
+// Matches Excalidraw's default palette
+
+const FILL_COLORS = [
+  { v: 'transparent',  check: 'dark' },
+  { v: '#ffffff',      check: 'dark' },
+  { v: '#f8f9fa',      check: 'dark' },
+  { v: '#ffc9c9',      check: 'dark' },
+  { v: '#ffa94d',      check: 'dark' },
+  { v: '#ffec99',      check: 'dark' },
+  { v: '#b2f2bb',      check: 'dark' },
+  { v: '#a5d8ff',      check: 'dark' },
+  { v: '#d0bfff',      check: 'dark' },
+  { v: '#e599f7',      check: 'dark' },
+  { v: '#ffa8a8',      check: 'dark' },
+  { v: '#e64980',      check: 'light' },
+  { v: '#f03e3e',      check: 'light' },
+  { v: '#e67700',      check: 'light' },
+  { v: '#2f9e44',      check: 'light' },
+  { v: '#1971c2',      check: 'light' },
+  { v: '#7048e8',      check: 'light' },
+  { v: '#495057',      check: 'light' },
+  { v: '#212529',      check: 'light' },
+  { v: '#000000',      check: 'light' },
 ]
 
-const PRESET_STROKES = [
-  '#374151','#9CA3AF','#3B82F6','#10B981','#F59E0B',
-  '#EF4444','#8B5CF6','#EC4899','#14B8A6','#F97316','#000000','#ffffff',
+const STROKE_COLORS = [
+  { v: '#000000' }, { v: '#343a40' }, { v: '#495057' }, { v: '#868e96' },
+  { v: '#1971c2' }, { v: '#2f9e44' }, { v: '#e67700' }, { v: '#e64980' },
+  { v: '#7048e8' }, { v: '#f03e3e' }, { v: '#ffffff' }, { v: '#ced4da' },
 ]
+
+const STROKE_WIDTHS = [
+  { v: 1,   label: 'S' },
+  { v: 2,   label: 'M' },
+  { v: 4,   label: 'L' },
+  { v: 8,   label: 'XL' },
+]
+
+const STROKE_STYLES: { v: StrokeStyle; dash?: string; label: string }[] = [
+  { v: 'solid',  label: '—' },
+  { v: 'dashed', dash: '6,4', label: '- -' },
+  { v: 'dotted', dash: '2,3', label: '···' },
+]
+
+const FONT_SIZES = [10, 12, 14, 16, 20, 24, 32, 40]
 
 export default function ShapeProperties({ node }: { node: ShapeNodeFull }) {
   const { updateNode, deleteNode, duplicateNodes } = useDiagramStore()
   const { pushSnapshot } = useHistoryStore()
-
   const d = node.data
 
   const set = useCallback(
@@ -44,282 +78,319 @@ export default function ShapeProperties({ node }: { node: ShapeNodeFull }) {
     duplicateNodes([node.id])
   }
 
+  const isLine = String(d.shapeType).startsWith('line') || String(d.shapeType).startsWith('arrow')
+  const isText = d.shapeType === 'text'
+
   return (
-    <div className="divide-y divide-slate-100 text-sm">
+    <div className="flex flex-col divide-y divide-slate-100">
 
-      {/* ── Shape header ── */}
-      <div className="px-4 py-3 flex items-center gap-2.5">
-        <div className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center">
-          <ShapeIcon type={d.shapeType} stroke={(d.stroke as string) ?? '#334155'} />
-        </div>
-        <div>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Shape</p>
-          <p className="text-sm font-semibold text-slate-800 capitalize">
-            {d.shapeType.replace(/-/g, ' ')}
-          </p>
-        </div>
-      </div>
-
-      {/* ── Text ── */}
-      <Section title="Text">
-        <input
-          type="text"
-          value={(d.label as string) ?? ''}
-          onChange={(e) => set({ label: e.target.value })}
-          placeholder="Double-click shape to type…"
-          className="field-input"
+      {/* ── Stroke colour ── */}
+      {!isText && (
+      <PropRow label="Stroke">
+        <SwatchGrid
+          colors={STROKE_COLORS.map((c) => c.v)}
+          value={(d.stroke as string) ?? '#000000'}
+          onSelect={(v) => set({ stroke: v })}
+          cols={6}
         />
-      </Section>
-
-      {/* ── Fill ── */}
-      {d.shapeType !== 'line' && d.shapeType !== 'arrow' && !String(d.shapeType).startsWith('arrow-') && (
-      <Section title="Fill">
-        <ColorSwatches
-          presets={PRESET_FILLS}
-          value={(d.fill as string) ?? '#ffffff'}
-          onChange={(v) => set({ fill: v })}
-        />
-        <div className="flex items-center gap-2 mt-2">
-          <label className="text-xs text-gray-400 w-16">Custom</label>
-          <input
-            type="color"
-            value={(d.fill as string) === 'transparent' ? '#ffffff' : (d.fill as string) ?? '#ffffff'}
-            onChange={(e) => set({ fill: e.target.value })}
-            className="w-8 h-7 rounded cursor-pointer border border-gray-200"
+        <div className="flex items-center gap-1.5 mt-2">
+          <label className="text-[10px] text-slate-400 w-10">Custom</label>
+          <ColorInput
+            value={(d.stroke as string) ?? '#000000'}
+            onChange={(v) => set({ stroke: v })}
           />
-          <label className="text-xs text-gray-400 ml-2">Opacity</label>
-          <input
-            type="range" min={0} max={1} step={0.05}
-            value={(d.fillOpacity as number) ?? 1}
-            onChange={(e) => set({ fillOpacity: parseFloat(e.target.value) })}
-            className="flex-1"
-          />
-          <span className="text-xs text-gray-500 w-8 text-right">
-            {Math.round(((d.fillOpacity as number) ?? 1) * 100)}%
-          </span>
         </div>
-      </Section>
+      </PropRow>
       )}
 
-      {/* ── Stroke ── */}
-      <Section title="Stroke">
-        <ColorSwatches
-          presets={PRESET_STROKES}
-          value={(d.stroke as string) ?? '#374151'}
-          onChange={(v) => set({ stroke: v })}
-        />
-        <div className="flex items-center gap-2 mt-2">
-          <label className="text-xs text-gray-400 w-16">Custom</label>
-          <input
-            type="color"
-            value={(d.stroke as string) ?? '#374151'}
-            onChange={(e) => set({ stroke: e.target.value })}
-            className="w-8 h-7 rounded cursor-pointer border border-gray-200"
+      {/* ── Fill colour — not for lines / text ── */}
+      {!isLine && !isText && (
+        <PropRow label="Fill">
+          <SwatchGrid
+            colors={FILL_COLORS.map((c) => c.v)}
+            value={(d.fill as string) ?? 'transparent'}
+            onSelect={(v) => set({ fill: v })}
+            cols={5}
+            showTransparent
           />
-        </div>
+          <div className="flex items-center gap-1.5 mt-2">
+            <label className="text-[10px] text-slate-400 w-10">Custom</label>
+            <ColorInput
+              value={(d.fill as string) === 'transparent' ? '#ffffff' : ((d.fill as string) ?? '#ffffff')}
+              onChange={(v) => set({ fill: v })}
+            />
+            <label className="text-[10px] text-slate-400 ml-1">Opacity</label>
+            <input type="range" min={0} max={1} step={0.05}
+              value={(d.fillOpacity as number) ?? 1}
+              onChange={(e) => set({ fillOpacity: parseFloat(e.target.value) })}
+              className="flex-1 h-1.5 accent-slate-900"
+            />
+            <span className="text-[10px] text-slate-500 w-6 text-right tabular-nums">
+              {Math.round(((d.fillOpacity as number) ?? 1) * 100)}%
+            </span>
+          </div>
+        </PropRow>
+      )}
 
-        {/* Stroke width */}
-        <div className="flex items-center gap-2 mt-2">
-          <label className="text-xs text-gray-400 w-16">Width</label>
-          <input
-            type="range" min={0.5} max={12} step={0.5}
-            value={(d.strokeWidth as number) ?? 1.5}
-            onChange={(e) => set({ strokeWidth: parseFloat(e.target.value) })}
-            className="flex-1"
-          />
-          <span className="text-xs text-gray-500 w-8 text-right">
-            {(d.strokeWidth as number) ?? 1.5}px
-          </span>
-        </div>
-
-        {/* Stroke style */}
-        <div className="flex gap-1 mt-2">
-          {(['solid','dashed','dotted'] as StrokeStyle[]).map((s) => (
-            <button
-              key={s}
-              onClick={() => set({ strokeStyle: s })}
+      {/* ── Stroke width ── */}
+      {!isText && (
+      <PropRow label="Width">
+        <div className="flex gap-1">
+          {STROKE_WIDTHS.map(({ v, label }) => (
+            <button key={v} onClick={() => set({ strokeWidth: v })}
               className={[
-                'flex-1 py-1.5 rounded-lg text-xs font-mono border transition-colors capitalize',
-                (d.strokeStyle as string ?? 'solid') === s
-                  ? 'bg-blue-50 border-blue-400 text-blue-700 font-semibold'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300',
-              ].join(' ')}
-            >
-              {s === 'solid' ? '—' : s === 'dashed' ? '- -' : '···'}
+                'flex-1 py-1.5 rounded-lg border text-[11px] font-medium transition-colors',
+                (d.strokeWidth as number ?? 2) === v
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'border-slate-200 text-slate-600 hover:border-slate-400',
+              ].join(' ')}>
+              {label}
             </button>
           ))}
         </div>
-      </Section>
-
-      {/* ── Geometry ── */}
-      {d.shapeType !== 'line' && d.shapeType !== 'text' && (
-        <Section title="Geometry">
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 w-20">Corner r.</label>
-            <input
-              type="range" min={0} max={80} step={1}
-              value={(d.cornerRadius as number) ?? 0}
-              onChange={(e) => set({ cornerRadius: parseInt(e.target.value) })}
-              className="flex-1"
-            />
-            <span className="text-xs text-gray-500 w-8 text-right">
-              {(d.cornerRadius as number) ?? 0}px
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mt-2">
-            <label className="text-xs text-gray-400 w-20">Opacity</label>
-            <input
-              type="range" min={0} max={100} step={1}
-              value={(d.opacity as number) ?? 100}
-              onChange={(e) => set({ opacity: parseInt(e.target.value) })}
-              className="flex-1"
-            />
-            <span className="text-xs text-gray-500 w-8 text-right">
-              {(d.opacity as number) ?? 100}%
-            </span>
-          </div>
-        </Section>
+        <div className="flex gap-1 mt-1.5">
+          {STROKE_STYLES.map(({ v, dash, label }) => (
+            <button key={v} onClick={() => set({ strokeStyle: v })}
+              title={v}
+              className={[
+                'flex-1 py-1.5 rounded-lg border flex items-center justify-center transition-colors',
+                (d.strokeStyle as string ?? 'solid') === v
+                  ? 'bg-slate-900 border-slate-900'
+                  : 'border-slate-200 hover:border-slate-400',
+              ].join(' ')}>
+              <svg width="22" height="8" viewBox="0 0 22 8">
+                <line x1="1" y1="4" x2="21" y2="4"
+                  stroke={(d.strokeStyle as string ?? 'solid') === v ? '#fff' : '#475569'}
+                  strokeWidth="2" strokeLinecap="round" strokeDasharray={dash} />
+              </svg>
+            </button>
+          ))}
+        </div>
+      </PropRow>
       )}
 
-      {/* ── Typography ── */}
-      <Section title="Text">
-        <div className="space-y-2">
+      {/* ── Corner radius — rectangles only ── */}
+      {d.shapeType === 'rectangle' && (
+        <PropRow label="Corners">
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 w-16">Size</label>
-            <input
-              type="range" min={8} max={72} step={1}
-              value={(d.fontSize as number) ?? 14}
-              onChange={(e) => set({ fontSize: parseInt(e.target.value) })}
-              className="flex-1"
+            <input type="range" min={0} max={60} step={1}
+              value={(d.cornerRadius as number) ?? 0}
+              onChange={(e) => set({ cornerRadius: parseInt(e.target.value) })}
+              className="flex-1 h-1.5 accent-slate-900"
             />
-            <span className="text-xs text-gray-500 w-8 text-right">
-              {(d.fontSize as number) ?? 14}px
+            <span className="text-[10px] text-slate-500 w-6 text-right tabular-nums">
+              {(d.cornerRadius as number) ?? 0}
             </span>
           </div>
+        </PropRow>
+      )}
 
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 w-16">Colour</label>
-            <input
-              type="color"
-              value={(d.textColor as string) ?? '#111827'}
-              onChange={(e) => set({ textColor: e.target.value })}
-              className="w-8 h-7 rounded cursor-pointer border border-gray-200"
+      {/* ── Opacity ── */}
+      <PropRow label="Opacity">
+        <div className="flex items-center gap-2">
+          <input type="range" min={0} max={100} step={1}
+            value={(d.opacity as number) ?? 100}
+            onChange={(e) => set({ opacity: parseInt(e.target.value) })}
+            className="flex-1 h-1.5 accent-slate-900"
+          />
+          <span className="text-[10px] text-slate-500 w-8 text-right tabular-nums">
+            {(d.opacity as number) ?? 100}%
+          </span>
+        </div>
+      </PropRow>
+
+      {/* ── Label (synced with canvas; not a separate draggable text object) ── */}
+      <PropRow label={isLine ? 'Arrow label' : isText ? 'Text' : 'Label'}>
+        {isLine || isText ? (
+          <input
+            type="text"
+            value={(d.label as string) ?? ''}
+            onChange={(e) => set({ label: e.target.value })}
+            placeholder={isLine ? 'Mid-arrow label…' : 'Type here…'}
+            className="field-input text-sm"
+          />
+        ) : (
+          <textarea
+            value={(d.label as string) ?? ''}
+            onChange={(e) => set({ label: e.target.value })}
+            placeholder="Double-click the shape to type…"
+            rows={3}
+            className="field-input text-sm resize-none"
+          />
+        )}
+        <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+          {isLine
+            ? 'Double-click the arrow to edit the hanging label.'
+            : isText
+              ? 'Double-click empty canvas or use the Text tool to place text.'
+              : 'Drag the label to place it · Double-click to edit.'}
+        </p>
+      </PropRow>
+
+      {/* ── Font ── */}
+      <PropRow label="Font">
+        <div className="space-y-2">
+          {/* Size */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-slate-400 w-8">Size</label>
+            <div className="flex flex-wrap gap-1 flex-1">
+              {FONT_SIZES.map((s) => (
+                <button key={s} onClick={() => set({ fontSize: s })}
+                  className={[
+                    'w-8 h-7 rounded-lg border text-[10px] font-medium tabular-nums transition-colors',
+                    (d.fontSize as number ?? 14) === s
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-400',
+                  ].join(' ')}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Weight */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-slate-400 w-8">Style</label>
+            <div className="flex gap-1 flex-1">
+              {([
+                { v: 'normal',   display: 'A' },
+                { v: 'semibold', display: 'A', fw: 600 },
+                { v: 'bold',     display: 'A', fw: 700 },
+              ] as { v: FontWeight; display: string; fw?: number }[]).map(({ v, display, fw }) => (
+                <button key={v} onClick={() => set({ fontWeight: v })}
+                  style={{ fontWeight: fw ?? 400 }}
+                  className={[
+                    'flex-1 py-1.5 rounded-lg border text-sm transition-colors',
+                    (d.fontWeight as string ?? 'normal') === v
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-400',
+                  ].join(' ')}>
+                  {display}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Align */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-slate-400 w-8">Align</label>
+            <div className="flex gap-1 flex-1">
+              {([
+                { v: 'left',   icon: <AlignLeft   className="w-3.5 h-3.5" /> },
+                { v: 'center', icon: <AlignCenter className="w-3.5 h-3.5" /> },
+                { v: 'right',  icon: <AlignRight  className="w-3.5 h-3.5" /> },
+              ] as { v: TextAlign; icon: React.ReactNode }[]).map(({ v, icon }) => (
+                <button key={v} onClick={() => set({ textAlign: v })}
+                  className={[
+                    'flex-1 py-1.5 rounded-lg border flex items-center justify-center transition-colors',
+                    (d.textAlign as string ?? 'center') === v
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'border-slate-200 text-slate-600 hover:border-slate-400',
+                  ].join(' ')}>
+                  {icon}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Text colour */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] text-slate-400 w-8">Color</label>
+            <ColorInput
+              value={(d.textColor as string) ?? '#0f172a'}
+              onChange={(v) => set({ textColor: v })}
             />
           </div>
-
-          <div className="flex gap-1">
-            {(['normal','semibold','bold'] as FontWeight[]).map((w) => (
-              <button
-                key={w}
-                onClick={() => set({ fontWeight: w })}
-                className={[
-                  'flex-1 py-1.5 rounded-lg text-xs border transition-colors capitalize',
-                  (d.fontWeight as string ?? 'normal') === w
-                    ? 'bg-blue-50 border-blue-400 text-blue-700'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-300',
-                ].join(' ')}
-                style={{ fontWeight: w === 'semibold' ? 600 : w }}
-              >
-                {w}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex gap-1">
-            {(['left','center','right'] as TextAlign[]).map((a) => (
-              <button
-                key={a}
-                onClick={() => set({ textAlign: a })}
-                className={[
-                  'flex-1 py-1.5 rounded-lg text-xs border transition-colors capitalize',
-                  (d.textAlign as string ?? 'center') === a
-                    ? 'bg-blue-50 border-blue-400 text-blue-700'
-                    : 'border-gray-200 text-gray-500 hover:border-gray-300',
-                ].join(' ')}
-              >
-                {a === 'left' ? '⇤' : a === 'center' ? '⇔' : '⇥'}
-              </button>
-            ))}
-          </div>
         </div>
-      </Section>
+      </PropRow>
 
       {/* ── Actions ── */}
-      <Section title="Actions">
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={handleDuplicate}
-            className="w-full flex items-center gap-2 py-2 px-3 text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors"
-          >
-            <Copy className="w-4 h-4" /> Duplicate
+      <PropRow label="">
+        <div className="flex gap-2">
+          <button onClick={handleDuplicate}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition-colors">
+            <Copy className="w-3.5 h-3.5" /> Duplicate
           </button>
-          <button
-            onClick={handleDelete}
-            className="w-full flex items-center gap-2 py-2 px-3 text-sm text-red-600 bg-red-50 hover:bg-red-100/80 border border-red-200 rounded-xl transition-colors"
-          >
-            <Trash2 className="w-4 h-4" /> Delete
+          <button onClick={handleDelete}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm text-red-600 bg-red-50 hover:bg-red-100/80 border border-red-200 rounded-xl transition-colors">
+            <Trash2 className="w-3.5 h-3.5" /> Delete
           </button>
         </div>
-      </Section>
+      </PropRow>
     </div>
   )
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── sub-components ───────────────────────────────────────────────────────────
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function PropRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-4 py-3 space-y-2">
-      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{title}</p>
+      {label && (
+        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
+      )}
       {children}
     </div>
   )
 }
 
-function ColorSwatches({ presets, value, onChange }: {
-  presets: string[]
+function SwatchGrid({
+  colors, value, onSelect, cols = 5, showTransparent = false,
+}: {
+  colors: string[]
   value: string
-  onChange: (v: string) => void
+  onSelect: (v: string) => void
+  cols?: number
+  showTransparent?: boolean
 }) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      {presets.map((c) => (
-        <button
-          key={c}
-          title={c}
-          onClick={() => onChange(c)}
-          className="w-6 h-6 rounded-md border transition-all flex-shrink-0 hover:scale-105"
-          style={{
-            backgroundColor: c === 'transparent' ? 'transparent' : c,
-            borderColor: value === c ? '#0F172A' : '#E2E8F0',
-            outline: value === c ? '2px solid #CBD5E1' : 'none',
-            backgroundImage:
-              c === 'transparent'
+      {colors.map((c) => {
+        const isTransparent = c === 'transparent'
+        const active = value === c
+        return (
+          <button key={c} title={c} onClick={() => onSelect(c)}
+            className="w-6 h-6 rounded-md border transition-all hover:scale-110 flex-shrink-0"
+            style={{
+              backgroundColor: isTransparent ? 'transparent' : c,
+              borderColor: active ? '#0F172A' : '#E2E8F0',
+              boxShadow: active
+                ? '0 0 0 2px #CBD5E1'
+                : c === '#ffffff' ? 'inset 0 0 0 1px #E2E8F0' : undefined,
+              backgroundImage: isTransparent
                 ? 'repeating-conic-gradient(#CBD5E1 0% 25%, white 0% 50%) 0 0 / 6px 6px'
                 : undefined,
-            boxShadow: c === '#ffffff' ? 'inset 0 0 0 1px #E2E8F0' : undefined,
-          }}
-        />
-      ))}
+            }}
+          />
+        )
+      })}
     </div>
   )
 }
 
-function ShapeIcon({ type, stroke }: { type: string; stroke: string }) {
-  const s = { stroke, strokeWidth: 1.5, fill: 'none' }
+function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24">
-      {type === 'rectangle'    && <rect x="3" y="5" width="18" height="14" rx="1" {...s} />}
-      {type === 'ellipse'      && <ellipse cx="12" cy="12" rx="9" ry="7" {...s} />}
-      {type === 'diamond'      && <polygon points="12,3 21,12 12,21 3,12" {...s} />}
-      {type === 'triangle'     && <polygon points="12,3 21,20 3,20" {...s} />}
-      {type === 'parallelogram'&& <polygon points="6,5 21,5 18,19 3,19" {...s} />}
-      {type === 'cylinder'     && <><rect x="4" y="7" width="16" height="12" {...s}/><ellipse cx="12" cy="7" rx="8" ry="3" {...s}/></>}
-      {type === 'hexagon'      && <polygon points="12,2 21,7 21,17 12,22 3,17 3,7" {...s} />}
-      {type === 'star'         && <polygon points="12,2 15,9 22,9 16,14 18,21 12,17 6,21 8,14 2,9 9,9" {...s} />}
-      {type.startsWith('arrow')&& <><line x1="3" y1="12" x2="21" y2="12" {...s}/><polyline points="15,6 21,12 15,18" {...s}/></>}
-      {type === 'line'         && <line x1="3" y1="12" x2="21" y2="12" {...s} />}
-      {type === 'text'         && <text x="4" y="17" fontSize="14" fontWeight="bold" fill={stroke} stroke="none">T</text>}
-    </svg>
+    <div className="flex items-center gap-1.5">
+      <div className="relative w-7 h-7 rounded-lg overflow-hidden border border-slate-200 cursor-pointer flex-shrink-0">
+        <div className="absolute inset-0" style={{ backgroundColor: value }} />
+        <input type="color" value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+        />
+      </div>
+      <input
+        type="text"
+        value={value.toUpperCase()}
+        onChange={(e) => {
+          const v = e.target.value
+          if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) onChange(v)
+        }}
+        onBlur={(e) => {
+          if (!/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) onChange(value)
+        }}
+        className="flex-1 min-w-0 px-2 py-1 text-[11px] font-mono border border-slate-200 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800 bg-white"
+        maxLength={7}
+      />
+    </div>
   )
 }
