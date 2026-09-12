@@ -10,6 +10,7 @@ import TemplatesModal from './templates/TemplatesModal'
 import KeyboardShortcutsModal from './ui/KeyboardShortcutsModal'
 import ExportModal from './ui/ExportModal'
 import SimulationPanel from './simulation/SimulationPanel'
+import EstimatePanel from './estimate/EstimatePanel'
 import LldWorkspace from './lld/LldWorkspace'
 import { useDiagramPersistence } from '@/hooks/useDiagramPersistence'
 import { useUiStore } from '@/store/uiStore'
@@ -46,6 +47,7 @@ function AppInner({
   const libraryOpen = useUiStore((s) => s.libraryOpen)
   const inspectorOpen = useUiStore((s) => s.inspectorOpen)
   const simulationOpen = useUiStore((s) => s.simulationOpen)
+  const estimateOpen = useUiStore((s) => s.estimateOpen)
 
   // Single source of truth for the active mode — diagramStore owns the board,
   // so the sidebar and the canvas can never disagree about which one is up.
@@ -94,12 +96,16 @@ function AppInner({
             <CanvasShell />
           </main>
 
-          {/* Right: inspector or simulation */}
+          {/* Right: capacity, simulation or inspector — one at a time */}
           <aside
             className="flex-shrink-0 overflow-hidden border-l border-slate-200/80 bg-white transition-all duration-200"
-            style={{ width: inspectorOpen || simulationOpen ? 280 : 0 }}
+            style={{ width: inspectorOpen || simulationOpen || estimateOpen ? 280 : 0 }}
           >
-            {simulationOpen ? (
+            {estimateOpen ? (
+              <div className="h-full w-[280px] overflow-hidden">
+                <EstimatePanel />
+              </div>
+            ) : simulationOpen ? (
               <div className="h-full w-[280px] overflow-hidden">
                 <SimulationPanel />
               </div>
