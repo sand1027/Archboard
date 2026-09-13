@@ -8,10 +8,11 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('diagrams')
-    .select('id, name, thumbnail_url, created_at, updated_at')
-    .eq('user_id', user.id)
+    // user_id is selected rather than filtered on, so the caller can tell an owned diagram
+    // from a shared one. Filtering would hide everything shared with them.
+    .select('id, name, thumbnail_url, created_at, updated_at, user_id')
     .order('updated_at', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   const body = await request.json()
   const { name = 'Untitled Diagram', data = {} } = body
 
-  const { data: diagram, error } = await (supabase as any)
+  const { data: diagram, error } = await supabase
     .from('diagrams')
     .insert({ user_id: user.id, name, data })
     .select()
