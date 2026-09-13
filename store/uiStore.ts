@@ -89,6 +89,7 @@ interface UiState {
   templateModalOpen: boolean
   shortcutsModalOpen: boolean
   exportModalOpen: boolean
+  shareModalOpen: boolean
   simulationOpen: boolean
   estimateOpen: boolean
 
@@ -127,6 +128,7 @@ interface UiState {
   setTemplateModalOpen: (open: boolean) => void
   setShortcutsModalOpen: (open: boolean) => void
   setExportModalOpen: (open: boolean) => void
+  setShareModalOpen: (open: boolean) => void
   setSimulationOpen: (open: boolean) => void
   setEstimateOpen: (open: boolean) => void
   setContextMenu: (menu: UiState['contextMenu']) => void
@@ -167,6 +169,7 @@ export const useUiStore = create<UiState>()(
       templateModalOpen: false,
       shortcutsModalOpen: false,
       exportModalOpen: false,
+      shareModalOpen: false,
       simulationOpen: false,
       estimateOpen: false,
       contextMenu: { visible: false, x: 0, y: 0, type: 'canvas' },
@@ -207,6 +210,7 @@ export const useUiStore = create<UiState>()(
       setTemplateModalOpen: (templateModalOpen) => set({ templateModalOpen }),
       setShortcutsModalOpen: (shortcutsModalOpen) => set({ shortcutsModalOpen }),
       setExportModalOpen: (exportModalOpen) => set({ exportModalOpen }),
+      setShareModalOpen: (shareModalOpen) => set({ shareModalOpen }),
       // The right rail holds one panel at a time, so opening either closes the other.
       setSimulationOpen: (simulationOpen) =>
         set(simulationOpen ? { simulationOpen, estimateOpen: false } : { simulationOpen }),
