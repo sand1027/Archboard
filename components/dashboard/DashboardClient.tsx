@@ -11,8 +11,13 @@ import {
 } from 'lucide-react'
 import type { DiagramRow } from '@/lib/supabase/types'
 
+type DashboardDiagram = Pick<
+  DiagramRow,
+  'id' | 'name' | 'thumbnail_url' | 'created_at' | 'updated_at' | 'user_id'
+>
+
 interface Props {
-  initialDiagrams: Pick<DiagramRow, 'id' | 'name' | 'thumbnail_url' | 'created_at' | 'updated_at'>[]
+  initialDiagrams: DashboardDiagram[]
   user: { id: string; email: string }
 }
 
@@ -25,6 +30,12 @@ export default function DashboardClient({ initialDiagrams, user }: Props) {
   const filtered = diagrams.filter((d) =>
     d.name.toLowerCase().includes(search.toLowerCase())
   )
+
+  // The list now contains diagrams this person does not own, so it is split. Mixing them would
+  // make it look as though someone else's diagram were yours — and only one of the two can be
+  // deleted, which is confusing without the distinction.
+  const owned = filtered.filter((d) => d.user_id === user.id)
+  const sharedWithMe = filtered.filter((d) => d.user_id !== user.id)
 
   const handleNew = () => {
     startTransition(async () => {
@@ -140,45 +151,72 @@ export default function DashboardClient({ initialDiagrams, user }: Props) {
         {/* Page body */}
         <main className="flex-1 px-8 py-8">
           <div className="flex items-baseline gap-3 mb-6">
-            <h1 className="text-lg font-semibold text-gray-900">All diagrams</h1>
-            <span className="text-sm text-gray-400">{filtered.length}</span>
+            <h1 className="text-lg font-semibold text-gray-900">Your diagrams</h1>
+            <span className="text-sm text-gray-400">{owned.length}</span>
           </div>
 
-          {filtered.length === 0 ? (
-            search ? (
-              <div className="flex flex-col items-center justify-center py-32 text-center">
-                <Search className="w-8 h-8 text-gray-300 mb-3" />
-                <p className="text-sm font-medium text-gray-500">No results for &ldquo;{search}&rdquo;</p>
-                <p className="text-xs text-gray-400 mt-1">Try a different name</p>
-              </div>
-            ) : (
-              <EmptyState onNew={handleNew} isPending={isPending} />
-            )
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {/* New diagram card */}
-              <button
-                onClick={handleNew}
-                disabled={isPending}
-                className="group flex flex-col items-center justify-center gap-2 aspect-[4/3] rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all text-gray-400 hover:text-blue-500 disabled:opacity-50"
-              >
-                {isPending
-                  ? <Loader2 className="w-6 h-6 animate-spin" />
-                  : <Plus className="w-6 h-6" />
-                }
-                <span className="text-xs font-medium">New diagram</span>
-              </button>
-
-              {filtered.map((d) => (
-                <DiagramCard
-                  key={d.id}
-                  diagram={d}
-                  onOpen={() => router.push(`/diagram/${d.id}`)}
-                  onDelete={() => handleDelete(d.id)}
-                  onRename={(name) => handleRename(d.id, name)}
-                />
-              ))}
+          {filtered.length === 0 && search ? (
+            <div className="flex flex-col items-center justify-center py-32 text-center">
+              <Search className="w-8 h-8 text-gray-300 mb-3" />
+              <p className="text-sm font-medium text-gray-500">No results for &ldquo;{search}&rdquo;</p>
+              <p className="text-xs text-gray-400 mt-1">Try a different name</p>
             </div>
+          ) : owned.length === 0 && sharedWithMe.length === 0 ? (
+            <EmptyState onNew={handleNew} isPending={isPending} />
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {/* New diagram card */}
+                <button
+                  onClick={handleNew}
+                  disabled={isPending}
+                  className="group flex flex-col items-center justify-center gap-2 aspect-[4/3] rounded-xl border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 transition-all text-gray-400 hover:text-blue-500 disabled:opacity-50"
+                >
+                  {isPending
+                    ? <Loader2 className="w-6 h-6 animate-spin" />
+                    : <Plus className="w-6 h-6" />
+                  }
+                  <span className="text-xs font-medium">New diagram</span>
+                </button>
+
+                {owned.map((d) => (
+                  <DiagramCard
+                    key={d.id}
+                    diagram={d}
+                    onOpen={() => router.push(`/diagram/${d.id}`)}
+                    onDelete={() => handleDelete(d.id)}
+                    onRename={(name) => handleRename(d.id, name)}
+                  />
+                ))}
+              </div>
+
+              {/*
+                Diagrams someone else owns and shared with you. This is where an invite shows
+                up — there is no accept step, so appearing here *is* the notification.
+              */}
+              {sharedWithMe.length > 0 && (
+                <>
+                  <div className="flex items-baseline gap-3 mb-6 mt-10">
+                    <h2 className="text-lg font-semibold text-gray-900">Shared with you</h2>
+                    <span className="text-sm text-gray-400">{sharedWithMe.length}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {sharedWithMe.map((d) => (
+                      <DiagramCard
+                        key={d.id}
+                        diagram={d}
+                        onOpen={() => router.push(`/diagram/${d.id}`)}
+                        // Deleting and renaming belong to the owner. Offering them here would
+                        // show controls the database refuses.
+                        onDelete={undefined}
+                        onRename={undefined}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
           )}
         </main>
       </div>
@@ -193,16 +231,19 @@ function DiagramCard({
 }: {
   diagram: Pick<DiagramRow, 'id' | 'name' | 'thumbnail_url' | 'updated_at'>
   onOpen: () => void
-  onDelete: () => void
-  onRename: (name: string) => void
+  /** Omitted for a diagram someone else owns — both are refused by the database. */
+  onDelete?: () => void
+  onRename?: (name: string) => void
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [nameValue, setNameValue] = useState(diagram.name)
 
+  const canManage = !!onDelete && !!onRename
+
   const commitRename = () => {
     setRenaming(false)
-    if (nameValue.trim() && nameValue !== diagram.name) onRename(nameValue.trim())
+    if (onRename && nameValue.trim() && nameValue !== diagram.name) onRename(nameValue.trim())
     else setNameValue(diagram.name)
   }
 
@@ -277,21 +318,27 @@ function DiagramCard({
                   <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
                   Open
                 </button>
-                <button
-                  onClick={() => { setMenuOpen(false); setRenaming(true) }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Pencil className="w-3.5 h-3.5 text-gray-400" />
-                  Rename
-                </button>
-                <div className="my-1 border-t border-gray-100" />
-                <button
-                  onClick={() => { setMenuOpen(false); onDelete() }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Delete
-                </button>
+                {/* Renaming and deleting are the owner's to do. Showing them on a shared
+                    diagram would offer actions the database refuses. */}
+                {canManage && (
+                  <>
+                    <button
+                      onClick={() => { setMenuOpen(false); setRenaming(true) }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-gray-400" />
+                      Rename
+                    </button>
+                    <div className="my-1 border-t border-gray-100" />
+                    <button
+                      onClick={() => { setMenuOpen(false); onDelete?.() }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             </>
           )}
