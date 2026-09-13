@@ -15,9 +15,11 @@ interface Props {
   initialName: string
   userId: string
   userEmail: string
+  /** Team the diagram belongs to, so the share dialog can show it. */
+  teamId?: string | null
 }
 
-export default function DiagramEditor({ diagramId, initialData, initialName, userId, userEmail }: Props) {
+export default function DiagramEditor({ diagramId, initialData, initialName, userId, userEmail, teamId }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const { saveStatus, save, saveVersion } = useDiagramSync(diagramId)
   const { capture } = useThumbnail(diagramId, userId)
@@ -52,6 +54,7 @@ export default function DiagramEditor({ diagramId, initialData, initialName, use
           onHistoryOpen={() => setHistoryOpen(true)}
           userId={userId}
           userEmail={userEmail}
+          teamId={teamId}
         />
       </div>
 
