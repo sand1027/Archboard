@@ -41,6 +41,7 @@ import IconNodeComponent from './IconNode'
 import ShapesToolbar from './ShapesToolbar'
 import ContextMenuComponent from '../ui/ContextMenu'
 import PacketLayer from '../simulation/PacketLayer'
+import CursorLayer from '../collab/CursorLayer'
 import { generateId } from '@/lib/canvas/ids'
 import { nodeBounds, centerInside, isContainerNode } from '@/lib/canvas/geometry'
 import { DND_MIME } from '@/lib/canvas/dnd'
@@ -922,6 +923,9 @@ export default function Whiteboard() {
         {/* Simulation packets. Must be a child of ReactFlow so ViewportPortal can
             place it inside the transformed viewport and inherit pan and zoom. */}
         <PacketLayer />
+
+        {/* Collaborators' pointers — same reasoning, so they track pan and zoom. */}
+        <CursorLayer />
 
         {/* Floating shapes toolbar — bottom-centre of canvas */}
         <Panel position="bottom-center" style={{ marginBottom: 16 }}>
