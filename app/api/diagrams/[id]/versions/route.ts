@@ -12,11 +12,12 @@ export async function GET(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('diagram_versions')
     .select('id, version, name, thumbnail_url, created_at')
     .eq('diagram_id', id)
-    .eq('user_id', user.id)
+    // user_id on a version is whoever saved it, not who may read it. Filtering by it showed
+    // only your own versions and hid the rest of the diagram's history.
     .order('version', { ascending: false })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -37,7 +38,7 @@ export async function POST(
   const { name, data, thumbnail_url } = body
 
   // Get current max version
-  const { data: existing } = await (supabase as any)
+  const { data: existing } = await supabase
     .from('diagram_versions')
     .select('version')
     .eq('diagram_id', id)
@@ -46,7 +47,7 @@ export async function POST(
 
   const nextVersion = ((existing as any[])?.[0]?.version ?? 0) + 1
 
-  const { data: version, error } = await (supabase as any)
+  const { data: version, error } = await supabase
     .from('diagram_versions')
     .insert({
       diagram_id: id,
@@ -77,12 +78,11 @@ export async function PUT(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data, error } = await (supabase as any)
+  const { data, error } = await supabase
     .from('diagram_versions')
     .select('*')
     .eq('id', vid)
     .eq('diagram_id', id)
-    .eq('user_id', user.id)
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
