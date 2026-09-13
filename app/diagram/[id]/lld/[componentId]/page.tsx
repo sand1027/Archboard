@@ -91,7 +91,7 @@ async function loadWorkspaceContext(
     .from('diagrams')
     .select('*')
     .eq('id', diagramId)
-    .eq('user_id', user.id)
+    // RLS decides; a collaborator opening a component's LLD is legitimate.
     .single()
 
   if (error || !data) return { ok: false, reason: 'no-diagram' }

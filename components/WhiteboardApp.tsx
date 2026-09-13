@@ -11,6 +11,8 @@ import KeyboardShortcutsModal from './ui/KeyboardShortcutsModal'
 import ExportModal from './ui/ExportModal'
 import SimulationPanel from './simulation/SimulationPanel'
 import EstimatePanel from './estimate/EstimatePanel'
+import CollaborationLayer from './collab/CollaborationLayer'
+import ShareModal from './collab/ShareModal'
 import LldWorkspace from './lld/LldWorkspace'
 import { useDiagramPersistence } from '@/hooks/useDiagramPersistence'
 import { useUiStore } from '@/store/uiStore'
@@ -24,6 +26,8 @@ export interface WhiteboardAppProps {
   onSave?: () => void
   onHistoryOpen?: () => void
   userId?: string
+  /** Team the diagram is attached to, if any. */
+  teamId?: string | null
   userEmail?: string
 }
 
@@ -32,7 +36,9 @@ function AppInner({
   saveStatus,
   onSave,
   onHistoryOpen,
+  userId,
   userEmail,
+  teamId,
 }: WhiteboardAppProps) {
   // Autosave must survive the HLD↔LLD swap, so it is owned here rather than
   // by CanvasShell, which unmounts in LLD mode.
@@ -48,6 +54,7 @@ function AppInner({
   const inspectorOpen = useUiStore((s) => s.inspectorOpen)
   const simulationOpen = useUiStore((s) => s.simulationOpen)
   const estimateOpen = useUiStore((s) => s.estimateOpen)
+  const shareModalOpen = useUiStore((s) => s.shareModalOpen)
 
   // Single source of truth for the active mode — diagramStore owns the board,
   // so the sidebar and the canvas can never disagree about which one is up.
@@ -64,6 +71,11 @@ function AppInner({
         onHistoryOpen={onHistoryOpen}
         userEmail={userEmail}
       />
+
+      {/* Live collaboration. Cloud mode only: a local diagram has no channel to join. */}
+      {diagramId && userId && (
+        <CollaborationLayer diagramId={diagramId} userId={userId} userEmail={userEmail} />
+      )}
 
       {/*
         The whole editor body swaps with the mode. LLD brings its own palette,
@@ -121,6 +133,11 @@ function AppInner({
       <TemplatesModal />
       <KeyboardShortcutsModal />
       <ExportModal />
+
+      {/* Sharing needs a persisted diagram to attach access to, so cloud mode only. */}
+      {shareModalOpen && diagramId && (
+        <ShareModal diagramId={diagramId} ownerEmail={userEmail} teamId={teamId} />
+      )}
     </div>
   )
 }

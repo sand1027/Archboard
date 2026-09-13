@@ -2,11 +2,12 @@
 
 import Image from 'next/image'
 import { useCallback, useRef, useState, useEffect } from 'react'
+import PresenceAvatars from '@/components/collab/PresenceAvatars'
 import {
   Undo2, Redo2, Download,
   LayoutTemplate, Keyboard, Grid3x3, Magnet, ZoomIn,
   ZoomOut, Maximize2, Clock, ChevronLeft,
-  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator,
+  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator, UserPlus,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useReactFlow } from '@xyflow/react'
@@ -28,7 +29,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
   const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid, switchBoard, activeBoard } =
     useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
-  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen } =
+  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen, setShareModalOpen } =
     useUiStore()
   const reactFlow = useReactFlow()
   const [lldPickerOpen, setLldPickerOpen] = useState(false)
@@ -293,6 +294,23 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
         </button>
 
         {/* History button — only in cloud mode */}
+        {/* Who else is in the diagram. Shown before Share, since it answers "is anyone
+            here" — the question Share raises. Cloud mode only; a local diagram has no room. */}
+        {isCloudMode && <PresenceAvatars />}
+
+        {isCloudMode && (
+          <button
+            onClick={() => setShareModalOpen(true)}
+            title="Share this diagram"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg
+              transition-all border text-gray-700 border-gray-200 bg-white
+              hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Share</span>
+          </button>
+        )}
+
         {isCloudMode && onHistoryOpen && (
           <ToolbarButton
             onClick={onHistoryOpen}

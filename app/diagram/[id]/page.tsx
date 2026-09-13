@@ -6,7 +6,7 @@ import type { DiagramRow } from '@/lib/supabase/types'
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
-  const { data } = await (supabase as any).from('diagrams').select('name').eq('id', id).single()
+  const { data } = await supabase.from('diagrams').select('name').eq('id', id).single()
   const row = data as Pick<DiagramRow, 'name'> | null
   return { title: row?.name ? `${row.name} — ArchBoard` : 'ArchBoard' }
 }
@@ -17,11 +17,13 @@ export default async function DiagramPage({ params }: { params: Promise<{ id: st
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth')
 
-  const { data, error } = await (supabase as any)
+  // Access is RLS's decision — it admits the owner, invited collaborators and team members.
+  // Filtering on user_id here turned a valid share into a 404, which is what an invited user
+  // hit when they opened the link they were given.
+  const { data, error } = await supabase
     .from('diagrams')
     .select('*')
     .eq('id', id)
-    .eq('user_id', user.id)
     .single()
 
   if (error || !data) notFound()
@@ -31,10 +33,11 @@ export default async function DiagramPage({ params }: { params: Promise<{ id: st
   return (
     <DiagramEditor
       diagramId={id}
-      initialData={diagram.data as any}
+      initialData={diagram.data}
       initialName={diagram.name}
       userId={user.id}
       userEmail={user.email ?? ''}
+      teamId={diagram.team_id}
     />
   )
 }
