@@ -28,6 +28,7 @@ const SHORTCUTS = [
   { category: 'Drawing' },
   { keys: ['V'], desc: 'Select tool' },
   { keys: ['H'], desc: 'Hand tool' },
+  { keys: ['C'], desc: 'Capture region to notes' },
   { keys: ['R'], desc: 'Rectangle / Process' },
   { keys: ['D'], desc: 'Diamond / Decision' },
   { keys: ['Double-click'], desc: 'Empty canvas → text; shape → label; arrow → mid label' },
