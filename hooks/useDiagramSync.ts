@@ -11,22 +11,12 @@ import { buildDocument } from '@/lib/persistence/documentPayload'
 /**
  * Cloud persistence for one diagram.
  *
- * Saving used to be manual only. Local autosave ran every second or so into localStorage, so
- * the app felt like it was saving while the cloud copy could be an hour stale — and closing
- * the tab on another machine, or clearing site data, lost the lot. Anyone who did not notice
- * the Save button had no way to know.
- *
- * So there are now three layers: a debounced cloud autosave, a `dirty` flag the toolbar can
- * show, and a browser warning if the tab closes with work still unsent.
+ * Writes only when `save` is called (the toolbar button or ⌘S). A `dirty` flag tells the
+ * toolbar there is work that has not reached the server, and the browser warns if the tab
+ * closes with that work still unsent.
  */
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
-
-/**
- * Long enough that a drag or a burst of typing is one save rather than thirty, short enough
- * that walking away from the keyboard leaves nothing behind.
- */
-const AUTOSAVE_DELAY = 2500
 
 export interface DiagramSync {
   saveStatus: SaveStatus
@@ -72,8 +62,7 @@ export function useDiagramSync(diagramId: string): DiagramSync {
       })
       if (!res.ok) throw new Error('Save failed')
 
-      // Anything edited mid-flight is still unsent, so it stays dirty and the next debounce
-      // picks it up.
+      // Anything edited mid-flight is still unsent, so it stays dirty until the next Save.
       setDirty(changedDuringSave.current)
       setSaveStatus('saved')
       setTimeout(() => setSaveStatus('idle'), 2000)
@@ -86,25 +75,16 @@ export function useDiagramSync(diagramId: string): DiagramSync {
     }
   }, [diagramId])
 
-  // ── mark dirty, then autosave ───────────────────────────────────────────────
   useEffect(() => {
-    const timer = { current: null as ReturnType<typeof setTimeout> | null }
-
     const onChange = () => {
       setDirty(true)
       if (isSavingRef.current) changedDuringSave.current = true
-
-      if (timer.current) clearTimeout(timer.current)
-      timer.current = setTimeout(() => {
-        timer.current = null
-        void save()
-      }, AUTOSAVE_DELAY)
     }
 
     /*
-     * The same four stores the local autosave watches, for the same reason: everything here
-     * ends up in `buildDocument`, so a change to any of them means the cloud copy is behind.
-     * Watching only the canvas would quietly drop capacity and code edits.
+     * Everything that ends up in `buildDocument` is watched, so a change to any of them
+     * means the cloud copy is behind. Watching only the canvas would quietly drop capacity
+     * and code edits.
      */
     const unsubscribe = [
       useDiagramStore.subscribe(
@@ -129,17 +109,15 @@ export function useDiagramSync(diagramId: string): DiagramSync {
     ]
 
     return () => {
-      if (timer.current) clearTimeout(timer.current)
       for (const off of unsubscribe) off()
     }
-  }, [save])
+  }, [])
 
   /**
    * Last line of defence.
    *
-   * The debounce means there is always a window where work exists only in this tab, and a
-   * failed save leaves one open indefinitely. The browser's own prompt is the only thing that
-   * can interrupt a close.
+   * Unsaved work exists only in this tab until Save is clicked. The browser's own prompt is
+   * the only thing that can interrupt a close.
    */
   useEffect(() => {
     if (!dirty) return
