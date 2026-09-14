@@ -78,7 +78,14 @@ interface UiState {
   armedProtocol: Protocol | null
 
   // Library state
-  activeCategory: ComponentCategory | Provider | 'all' | 'recent'
+  /**
+   * The library's active filter.
+   *
+   * `'bbg'` is a tag filter rather than a category or a provider, but it is still a value this
+   * field holds — it was previously passed through `as any` at both the read and the write,
+   * which is the kind of cast that hides a real modelling gap.
+   */
+  activeCategory: ComponentCategory | Provider | 'all' | 'recent' | 'bbg'
   searchQuery: string
   recentlyUsed: string[]
 
@@ -126,7 +133,7 @@ interface UiState {
   setDefaultTextColor: (v: string) => void
   setActiveEdgeStyle: (style: Partial<EdgeStylePreset>) => void
   setArmedConnection: (type: ConnectionType | null, protocol?: Protocol | null) => void
-  setActiveCategory: (cat: ComponentCategory | Provider | 'all' | 'recent') => void
+  setActiveCategory: (cat: UiState['activeCategory']) => void
   setSearchQuery: (q: string) => void
   addRecentlyUsed: (componentId: string) => void
   setInspectorTab: (tab: 'properties' | 'connections') => void
