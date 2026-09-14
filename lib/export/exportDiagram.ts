@@ -21,12 +21,45 @@ export function importJSON(json: string): Diagram | null {
 // ─── PNG / SVG via React Flow bounds ─────────────────────────────────────────
 // These require the ReactFlow transform so they are called from the canvas hook.
 
+export interface NodesBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface ExportOptions {
   /** All current nodes — needed to compute bounding box */
-  nodesBounds: { x: number; y: number; width: number; height: number }
+  nodesBounds: NodesBounds
   /** The CSS transform string for the RF viewport, e.g. "translate(x,y) scale(z)" */
   viewportTransform: string
   diagramName: string
+}
+
+/** Padding around the diagram in the exported image, in CSS pixels. */
+export const EXPORT_PADDING_PX = 40
+
+/**
+ * A canvas the size of the diagram, plus a small margin.
+ *
+ * React Flow's `getViewportForBounds` treats a numeric padding as a *ratio*
+ * (`40` ≈ 49% of the page on each side). Combined with a 1200×800 floor that
+ * shrinks the architecture into the middle of a blank sheet — which is how an
+ * export can look like a second, smaller copy of the board.
+ */
+export function exportCanvasForBounds(
+  bounds: NodesBounds,
+  padding = EXPORT_PADDING_PX
+): { width: number; height: number; transform: string } {
+  const width = Math.max(1, Math.ceil(bounds.width) + padding * 2)
+  const height = Math.max(1, Math.ceil(bounds.height) + padding * 2)
+  const x = padding - bounds.x
+  const y = padding - bounds.y
+  return {
+    width,
+    height,
+    transform: `translate(${x}px, ${y}px) scale(1)`,
+  }
 }
 
 /**
@@ -35,11 +68,9 @@ export interface ExportOptions {
  * captures with html-to-image, then restores.
  */
 export async function exportPNG(opts: ExportOptions): Promise<void> {
-  const { nodesBounds, viewportTransform, diagramName } = opts
-
-  const PADDING = 40
-  const imageW = Math.max(1200, nodesBounds.width  + PADDING * 2)
-  const imageH = Math.max(800,  nodesBounds.height + PADDING * 2)
+  const { nodesBounds, diagramName } = opts
+  const canvas = exportCanvasForBounds(nodesBounds)
+  const viewportTransform = opts.viewportTransform || canvas.transform
 
   const viewportEl = document.querySelector<HTMLElement>('.react-flow__viewport')
   if (!viewportEl) return
@@ -58,17 +89,17 @@ export async function exportPNG(opts: ExportOptions): Promise<void> {
 
   try {
     const { toPng } = await import('html-to-image').catch(() => ({ toPng: null as any }))
-    if (!toPng) { await exportSVG(opts); return }
+    if (!toPng) { await exportSVG({ ...opts, viewportTransform }); return }
 
     // Capture just the viewport element at the exact canvas bounds
     const container = document.querySelector<HTMLElement>('.react-flow__renderer')
-    if (!container) { await exportSVG(opts); return }
+    if (!container) { await exportSVG({ ...opts, viewportTransform }); return }
 
     const dataUrl = await toPng(container, {
       backgroundColor: '#ffffff',
       pixelRatio: 2,
-      width: imageW,
-      height: imageH,
+      width: canvas.width,
+      height: canvas.height,
       style: { background: '#ffffff' },
     })
 
@@ -84,20 +115,18 @@ export async function exportPNG(opts: ExportOptions): Promise<void> {
  * Clones the RF viewport element, applies the fit transform, strips the background.
  */
 export async function exportSVG(opts: ExportOptions): Promise<void> {
-  const { nodesBounds, viewportTransform, diagramName } = opts
-
-  const PADDING = 40
-  const imageW = Math.max(1200, nodesBounds.width  + PADDING * 2)
-  const imageH = Math.max(800,  nodesBounds.height + PADDING * 2)
+  const { nodesBounds, diagramName } = opts
+  const canvas = exportCanvasForBounds(nodesBounds)
+  const viewportTransform = opts.viewportTransform || canvas.transform
 
   const viewportEl = document.querySelector<SVGGElement>('.react-flow__viewport')
   if (!viewportEl) return
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
   svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-  svg.setAttribute('width',   String(imageW))
-  svg.setAttribute('height',  String(imageH))
-  svg.setAttribute('viewBox', `0 0 ${imageW} ${imageH}`)
+  svg.setAttribute('width',   String(canvas.width))
+  svg.setAttribute('height',  String(canvas.height))
+  svg.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`)
 
   // White background
   const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
