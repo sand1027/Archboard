@@ -1,11 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
-import NotesImage from './NotesImage'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import NotesImage, { imageWidthPct } from './NotesImage'
+import { wrapRangeAfterImage } from '@/lib/notes/imageLayout'
 import { useNotesStore } from '@/store/notesStore'
 import {
   NOTE_LINE_HEIGHT,
   PLACEHOLDER,
+  snapToNoteLine,
   type BlockType,
   type NoteBlock,
   type NotePage,
@@ -30,7 +32,7 @@ import {
  * section you were writing. Images skip the 28px rhythm on purpose — a picture is not a line.
  */
 const BLOCK_CLASS: Record<Exclude<BlockType, 'image'>, string> = {
-  heading: 'text-[17px] font-semibold text-slate-900 border-b border-slate-200 pb-0.5',
+  heading: 'text-[17px] font-semibold text-slate-900 shadow-[inset_0_-1px_0_0_#e2e8f0]',
   subheading: 'pl-3 text-[14px] font-semibold text-slate-700',
   body: 'text-[13px] text-slate-800',
   bullet: 'text-[13px] text-slate-800',
@@ -87,6 +89,7 @@ export default function NotesEditor({ page, focusedBlockId, onFocusBlock }: Note
       if (event.key === 'Backspace' && offset === 0 && (text === '' || block.type === 'image') && index > 0) {
         event.preventDefault()
         const previous = page.blocks[index - 1]
+        if (!previous) return
         removeBlock(page.kind, block.id)
         focusNext.current = { id: previous.id, at: 'end' }
       }
@@ -94,102 +97,161 @@ export default function NotesEditor({ page, focusedBlockId, onFocusBlock }: Note
     [insertBlockAfter, page.blocks, page.kind, removeBlock, setBlockText]
   )
 
-  return (
-    <div>
-      {page.blocks.map((block, index) => (
-        <Block
-          key={block.id}
-          block={block}
-          kind={page.kind}
-          focused={focusedBlockId === block.id}
-          placeholder={index === 0 && block.type !== 'image' ? PLACEHOLDER[page.kind] : ''}
-          onInput={(text) => setBlockText(page.kind, block.id, text)}
-          onFocus={() => onFocusBlock(block.id)}
-          onKeyDown={(event) => handleKeyDown(event, block, index)}
-          onRemove={() => {
-            if (index === 0 && page.blocks.length <= 1) return
-            const previous = page.blocks[Math.max(0, index - 1)]
-            removeBlock(page.kind, block.id)
-            focusNext.current = { id: previous.id, at: 'end' }
-          }}
-        />
-      ))}
-    </div>
-  )
+  const ruled = page.paper === 'ruled'
+  const rows: ReactNode[] = []
+  let index = 0
+  while (index < page.blocks.length) {
+    const block = page.blocks[index]
+
+    if (block.type === 'image') {
+      const imageIndex = index
+      const { wrap, nextIndex } = wrapRangeAfterImage(page.blocks, imageIndex)
+
+      const figure = (
+        <div
+          data-image-row
+          className="flow-root min-w-0 w-full"
+        >
+          <div
+            className={['relative float-left mr-3', ruled ? 'mb-0' : 'mb-2'].join(' ')}
+            style={{ width: `${imageWidthPct(block)}%` }}
+          >
+            <NotesImage
+              block={block}
+              kind={page.kind}
+              focused={focusedBlockId === block.id}
+              ruled={ruled}
+              onFocus={() => onFocusBlock(block.id)}
+              onKeyDown={(event) => handleKeyDown(event, block, imageIndex)}
+              onRemove={() => {
+                if (imageIndex === 0 && page.blocks.length <= 1) return
+                const previous = page.blocks[Math.max(0, imageIndex - 1)]
+                if (!previous || previous.id === block.id) {
+                  removeBlock(page.kind, block.id)
+                  return
+                }
+                removeBlock(page.kind, block.id)
+                focusNext.current = { id: previous.id, at: 'end' }
+              }}
+              onCaption={(text) => setBlockText(page.kind, block.id, text)}
+            />
+          </div>
+          {wrap.map((line, offset) => {
+            const lineIndex = imageIndex + 1 + offset
+            return (
+              <TextBlock
+                key={line.id}
+                block={line}
+                focused={focusedBlockId === line.id}
+                placeholder=""
+                onInput={(text) => setBlockText(page.kind, line.id, text)}
+                onFocus={() => onFocusBlock(line.id)}
+                onKeyDown={(event) => handleKeyDown(event, line, lineIndex)}
+              />
+            )
+          })}
+        </div>
+      )
+
+      rows.push(
+        ruled ? (
+          <LineSnap key={block.id}>{figure}</LineSnap>
+        ) : (
+          <div key={block.id} className="py-2">
+            {figure}
+          </div>
+        )
+      )
+
+      index = nextIndex
+      continue
+    }
+
+    const blockIndex = index
+    rows.push(
+      <TextBlock
+        key={block.id}
+        block={block}
+        focused={focusedBlockId === block.id}
+        placeholder={index === 0 ? PLACEHOLDER[page.kind] : ''}
+        onInput={(text) => setBlockText(page.kind, block.id, text)}
+        onFocus={() => onFocusBlock(block.id)}
+        onKeyDown={(event) => handleKeyDown(event, block, blockIndex)}
+      />
+    )
+    index += 1
+  }
+
+  return <div>{rows}</div>
 }
 
-interface BlockProps {
+interface TextBlockProps {
   block: NoteBlock
-  kind: NotePage['kind']
   focused: boolean
   placeholder: string
   onInput: (text: string) => void
   onFocus: () => void
   onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
-  onRemove: () => void
 }
 
-function Block({ block, kind, focused, placeholder, onInput, onFocus, onKeyDown, onRemove }: BlockProps) {
+function TextBlock({ block, placeholder, onInput, onFocus, onKeyDown }: TextBlockProps) {
   const ref = useRef<HTMLDivElement>(null)
+  const isBullet = block.type === 'bullet'
+  const textType = block.type === 'image' ? 'body' : block.type
+  const heading = block.type === 'heading' || block.type === 'subheading'
 
   useEffect(() => {
     const el = ref.current
     if (el && el.textContent !== block.text) el.textContent = block.text
   }, [block.text])
 
-  if (block.type === 'image') {
-    return (
-      <NotesImage
-        block={block}
-        kind={kind}
-        focused={focused}
-        onFocus={onFocus}
-        onKeyDown={onKeyDown}
-        onRemove={onRemove}
-        onCaption={onInput}
-      />
-    )
-  }
-
-  const isBullet = block.type === 'bullet'
-  // An image block returned above, so what is left is always a text block and indexes
-  // BLOCK_CLASS directly. Guarding for 'image' again here was unreachable.
-  const textType = block.type
-
   return (
     <div
-      className="flex"
-      style={{ minHeight: block.type === 'heading' ? NOTE_LINE_HEIGHT + 8 : NOTE_LINE_HEIGHT }}
-    >
-      {isBullet && (
-        <span
-          aria-hidden
-          className="shrink-0 select-none pr-2 text-slate-400"
-          style={{ lineHeight: `${NOTE_LINE_HEIGHT}px` }}
-        >
-          •
-        </span>
-      )}
-      <div
-        ref={ref}
-        data-block-id={block.id}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-label={block.type}
-        spellCheck
-        onInput={(e) => onInput(e.currentTarget.textContent ?? '')}
-        onFocus={onFocus}
-        onKeyDown={onKeyDown}
-        data-placeholder={placeholder}
-        className={[
-          'flex-1 outline-none',
-          'whitespace-pre-wrap break-words',
-          BLOCK_CLASS[textType],
-          'empty:before:pointer-events-none empty:before:text-slate-300 empty:before:content-[attr(data-placeholder)]',
-        ].join(' ')}
-        style={{ lineHeight: `${NOTE_LINE_HEIGHT}px` }}
-      />
+      ref={ref}
+      data-block-id={block.id}
+      contentEditable
+      suppressContentEditableWarning
+      role="textbox"
+      aria-label={block.type}
+      spellCheck
+      onInput={(e) => onInput(e.currentTarget.textContent ?? '')}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
+      data-placeholder={placeholder}
+      className={[
+        // Not a flex/BFC box: line boxes must shorten around a floated image, then
+        // run the full width of the page once they pass its bottom.
+        heading ? 'clear-both' : '',
+        isBullet ? "relative pl-4 before:absolute before:left-0 before:content-['•'] before:text-slate-400" : '',
+        'min-w-0 outline-none',
+        'whitespace-pre-wrap break-all [overflow-wrap:anywhere]',
+        BLOCK_CLASS[textType],
+        'empty:before:pointer-events-none empty:before:text-slate-300 empty:before:content-[attr(data-placeholder)]',
+      ].join(' ')}
+      style={{ lineHeight: `${NOTE_LINE_HEIGHT}px`, minHeight: NOTE_LINE_HEIGHT }}
+    />
+  )
+}
+
+function LineSnap({ children }: { children: ReactNode }) {
+  const innerRef = useRef<HTMLDivElement>(null)
+  const [minHeight, setMinHeight] = useState<number>()
+
+  useLayoutEffect(() => {
+    const inner = innerRef.current
+    if (!inner) return
+
+    const apply = () => setMinHeight(snapToNoteLine(inner.getBoundingClientRect().height))
+    apply()
+
+    const observer = new ResizeObserver(apply)
+    observer.observe(inner)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div className="min-w-0 w-full" style={{ minHeight }}>
+      <div ref={innerRef} className="min-w-0 w-full">{children}</div>
     </div>
   )
 }
@@ -211,6 +273,15 @@ export function focusBlockById(blockId: string, at: 'start' | 'end' = 'end'): vo
 }
 
 function placeCaret(el: HTMLElement, at: 'start' | 'end'): void {
+  if (!el.isContentEditable && el.getAttribute('contenteditable') !== 'true') {
+    const editable = el.querySelector<HTMLElement>('[contenteditable="true"]') ?? el
+    focusNode(editable, at)
+    return
+  }
+  focusNode(el, at)
+}
+
+function focusNode(el: HTMLElement, at: 'start' | 'end'): void {
   el.focus()
 
   const selection = window.getSelection()
