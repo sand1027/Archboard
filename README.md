@@ -197,5 +197,4 @@ Working and usable, with rough edges. Known gaps:
 
 ## Licence
 
-Not yet chosen. Without one, default copyright applies and nobody else may reuse the code — add
-a `LICENSE` file if you want that to change.
+[MIT](LICENSE) — use it, fork it, ship it.

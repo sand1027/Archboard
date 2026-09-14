@@ -11,6 +11,7 @@ import KeyboardShortcutsModal from './ui/KeyboardShortcutsModal'
 import ExportModal from './ui/ExportModal'
 import SimulationPanel from './simulation/SimulationPanel'
 import EstimatePanel from './estimate/EstimatePanel'
+import RequirementsPanel from './notes/RequirementsPanel'
 import CollaborationLayer from './collab/CollaborationLayer'
 import ShareModal from './collab/ShareModal'
 import LldWorkspace from './lld/LldWorkspace'
@@ -65,6 +66,7 @@ function AppInner({
   const inspectorOpen = useUiStore((s) => s.inspectorOpen)
   const simulationOpen = useUiStore((s) => s.simulationOpen)
   const estimateOpen = useUiStore((s) => s.estimateOpen)
+  const notesOpen = useUiStore((s) => s.notesOpen)
   const shareModalOpen = useUiStore((s) => s.shareModalOpen)
 
   // Single source of truth for the active mode — diagramStore owns the board,
@@ -134,9 +136,16 @@ function AppInner({
           {/* Right: capacity, simulation or inspector — one at a time */}
           <aside
             className="flex-shrink-0 overflow-hidden border-l border-slate-200/80 bg-white transition-all duration-200"
-            style={{ width: inspectorOpen || simulationOpen || estimateOpen ? 280 : 0 }}
+            style={{
+              width:
+                inspectorOpen || simulationOpen || estimateOpen || notesOpen ? 280 : 0,
+            }}
           >
-            {estimateOpen ? (
+            {notesOpen ? (
+              <div className="h-full w-[280px] overflow-hidden">
+                <RequirementsPanel />
+              </div>
+            ) : estimateOpen ? (
               <div className="h-full w-[280px] overflow-hidden">
                 <EstimatePanel />
               </div>

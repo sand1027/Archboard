@@ -144,3 +144,62 @@ describe('DSL persistence', () => {
     expect(doc?.dsl?.source).toBe(dsl.source)
   })
 })
+
+describe('requirements persistence', () => {
+  const notes = {
+    items: [
+      {
+        id: 'req-1',
+        kind: 'functional',
+        title: 'Users can upload a photo',
+        body: 'Up to 10MB, JPEG or PNG.',
+        done: false,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'req-2',
+        kind: 'nonFunctional',
+        title: 'Feed loads under 200ms at p95',
+        body: '',
+        category: 'latency',
+        done: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+  }
+
+  it('carries the requirements through', () => {
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
+    expect(doc?.notes?.items).toHaveLength(2)
+    expect(doc?.notes?.items[1]).toMatchObject({ category: 'latency', done: true })
+  })
+
+  /** Additive: a document written before requirements existed opens exactly as it did. */
+  it('leaves the requirements undefined when absent', () => {
+    expect(migrateDocument(docWith(NODE_WITH_CONFIG))?.notes).toBeUndefined()
+  })
+
+  it('ignores an empty list rather than storing the key', () => {
+    expect(migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes: { items: [] } })?.notes).toBeUndefined()
+  })
+
+  it('drops an item with no recognisable kind', () => {
+    const doc = migrateDocument({
+      ...docWith(NODE_WITH_CONFIG),
+      notes: { items: [notes.items[0], { id: 'x', kind: 'wishful', title: 'no' }] },
+    })
+    expect(doc?.notes?.items).toHaveLength(1)
+  })
+
+  it('round-trips through JSON, which is how it is actually stored', () => {
+    const raw = JSON.parse(JSON.stringify({ ...docWith(NODE_WITH_CONFIG), notes }))
+    expect(migrateDocument(raw)?.notes).toEqual(notes)
+  })
+
+  it('carries requirements on a v1 flat document too', () => {
+    const doc = migrateDocument({ nodes: [NODE_WITH_CONFIG], edges: [], notes })
+    expect(doc?.notes?.items).toHaveLength(2)
+  })
+})

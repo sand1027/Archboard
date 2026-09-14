@@ -6,7 +6,7 @@ import PresenceAvatars from '@/components/collab/PresenceAvatars'
 import {
   Undo2, Redo2, Download,
   LayoutTemplate, Keyboard, Clock, ChevronLeft,
-  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator, UserPlus, Code2,
+  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator, UserPlus, Code2, NotebookPen,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -28,7 +28,7 @@ interface TopToolbarProps {
 export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onHistoryOpen, userEmail }: TopToolbarProps) {
   const { diagramName, setDiagramName, switchBoard, activeBoard } = useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
-  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen, setShareModalOpen, codeOpen, setCodeOpen } =
+  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen, notesOpen, setNotesOpen, setShareModalOpen, codeOpen, setCodeOpen } =
     useUiStore()
   const [lldPickerOpen, setLldPickerOpen] = useState(false)
   const router = useRouter()
@@ -258,6 +258,14 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
             icon={<Calculator className="w-3.5 h-3.5" />}
             label="Capacity"
             activeClass="bg-white text-indigo-700 shadow-sm"
+          />
+          <PanelToggle
+            onClick={() => setNotesOpen(!notesOpen)}
+            active={notesOpen}
+            title="Functional and non-functional requirements"
+            icon={<NotebookPen className="w-3.5 h-3.5" />}
+            label="Requirements"
+            activeClass="bg-white text-teal-700 shadow-sm"
           />
         </div>
 

@@ -17,10 +17,12 @@ import { normaliseNodesConnectable } from '@/lib/canvas/nodeConnectivity'
 import { useEstimateStore } from '@/store/estimateStore'
 import { normaliseWorkload, sanitiseOverrides } from '@/lib/estimate/workload'
 import { normalisePins, useDslStore } from '@/store/dslStore'
+import { normaliseItems, useNotesStore } from '@/store/notesStore'
 import type { BoardMode, BoardSnapshot } from '@/types/diagram'
 import type { LldWorkspace } from '@/types/lld'
 import type { WorkloadDocument } from '@/types/estimate'
 import type { DslDocument } from '@/types/dslDocument'
+import type { NotesDocument } from '@/types/notes'
 
 export const DOCUMENT_VERSION = 5
 
@@ -35,6 +37,13 @@ export interface ArchboardDocument {
    * living in browser-local settings. Absent on documents written before v4.
    */
   workload?: WorkloadDocument
+  /**
+   * Requirements — functional, non-functional and assumptions.
+   *
+   * Additive and unversioned: nothing branches on `version`, so an optional key that needs no
+   * migration logic does not need a bump. Absent on any diagram with none written.
+   */
+  notes?: NotesDocument
   /**
    * The HLD text source and its position pins. Absent on documents written before v5, and
    * on any diagram that has only ever been drawn.
@@ -64,6 +73,8 @@ export function buildDocument(): ArchboardDocument {
     boards,
     lldWorkspaces: useLldStore.getState().getPersistPayload(),
     workload: useEstimateStore.getState().getPersistPayload(),
+    // Undefined when nothing has been written, so the key is absent rather than empty.
+    notes: useNotesStore.getState().getPersistPayload(),
     dsl: dslPayload(),
   }
 }
@@ -106,6 +117,7 @@ export function migrateDocument(raw: unknown): ArchboardDocument | null {
       },
       lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
       workload: normaliseWorkloadDoc(raw.workload),
+      notes: normaliseNotesDoc(raw.notes),
       dsl: normaliseDslDoc(raw.dsl),
     }
   }
@@ -127,6 +139,7 @@ export function migrateDocument(raw: unknown): ArchboardDocument | null {
       },
       lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
       workload: normaliseWorkloadDoc(raw.workload),
+      notes: normaliseNotesDoc(raw.notes),
       dsl: normaliseDslDoc(raw.dsl),
     }
   }
@@ -143,6 +156,8 @@ export function applyDocument(doc: ArchboardDocument): void {
   useLldStore.getState().hydrate(doc.lldWorkspaces)
   // Undefined for pre-v4 documents; hydrate falls back to the default workload.
   useEstimateStore.getState().hydrate(doc.workload)
+  // Undefined for any diagram with no requirements written; hydrate clears to empty.
+  useNotesStore.getState().hydrate(doc.notes)
   // Undefined for pre-v5 documents and for any diagram that has only ever been drawn.
   useDslStore.getState().hydrate(doc.dsl)
   useUiStore.getState().setBoardMode(doc.activeBoard)
@@ -223,6 +238,19 @@ function normaliseWorkloadDoc(input: unknown): WorkloadDocument | undefined {
  * client that somehow carries text but no flag should still open as code rather than looking
  * like an empty editor next to a full canvas.
  */
+/**
+ * Accept a stored notes bag only if it is shaped like one.
+ *
+ * Returns undefined for an empty list as well as a missing key, so a diagram whose last
+ * requirement was deleted stops carrying the key at all.
+ */
+function normaliseNotesDoc(input: unknown): NotesDocument | undefined {
+  if (!isRecord(input)) return undefined
+
+  const items = normaliseItems(input.items)
+  return items.length > 0 ? { items } : undefined
+}
+
 function normaliseDslDoc(input: unknown): DslDocument | undefined {
   if (!isRecord(input)) return undefined
 
