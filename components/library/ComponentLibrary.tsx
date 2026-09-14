@@ -45,15 +45,33 @@ const CATEGORIES: { id: ComponentCategory | 'all'; label: string; group: string 
   { id: 'actors',           label: 'Actors',               group: 'system' },
 ]
 
-const PROVIDERS: { id: Provider; label: string; color: string }[] = [
-  { id: 'aws', label: 'AWS', color: '#FF9900' },
-  { id: 'gcp', label: 'GCP', color: '#4285F4' },
-  { id: 'azure', label: 'Azure', color: '#0078D4' },
-  { id: 'kubernetes', label: 'K8s', color: '#326CE5' },
-]
+/** How each provider is presented, if it has anything to show. */
+const PROVIDER_STYLE: Partial<Record<Provider, { label: string; color: string }>> = {
+  aws: { label: 'AWS', color: '#FF9900' },
+  gcp: { label: 'GCP', color: '#4285F4' },
+  azure: { label: 'Azure', color: '#0078D4' },
+  kubernetes: { label: 'K8s', color: '#326CE5' },
+  generic: { label: 'Generic', color: '#64748B' },
+}
+
+/** Tab order, for the ones that turn out to be present. */
+const PROVIDER_ORDER: Provider[] = ['aws', 'gcp', 'azure', 'kubernetes', 'generic']
+
+/**
+ * Providers the registry actually has components for.
+ *
+ * The list used to be hardcoded, so GCP, Azure and K8s rendered as tabs that filtered to
+ * nothing — three buttons whose only effect was to empty the panel. Deriving it means a tab
+ * appears the moment someone adds a component for that provider, and can never be empty.
+ */
+const PROVIDERS = PROVIDER_ORDER.filter(
+  (id) => getComponentsByProvider(id).length > 0
+).map((id) => ({ id, ...PROVIDER_STYLE[id]! }))
 
 // "ByteByteGo" is a tag-based filter, not a provider — handled specially
 const BBG_TAG = 'bbg'
+
+const HAS_BBG = componentRegistry.some((c) => c.tags.includes(BBG_TAG))
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -74,15 +92,17 @@ export default function ComponentLibrary() {
   const filteredComponents = useMemo(() => {
     if (searchQuery.trim()) return searchComponents(searchQuery)
     if (activeCategory === 'all') return componentRegistry
-    if (activeCategory === 'bbg' as any) {
-      return componentRegistry.filter((c) => c.tags.includes('bbg'))
+    if (activeCategory === BBG_TAG) {
+      return componentRegistry.filter((c) => c.tags.includes(BBG_TAG))
     }
     if (activeCategory === 'recent') {
       return recentlyUsed
         .map((id) => componentRegistry.find((c) => c.id === id))
         .filter(Boolean) as ArchitectureComponent[]
     }
-    if (['aws', 'gcp', 'azure', 'kubernetes', 'generic'].includes(activeCategory)) {
+    // Matched against the tabs that exist rather than a second hardcoded list, so the two
+    // cannot disagree about what counts as a provider.
+    if (PROVIDERS.some((p) => p.id === activeCategory)) {
       return getComponentsByProvider(activeCategory as Provider)
     }
     return getComponentsByCategory(activeCategory as ComponentCategory)
@@ -159,23 +179,27 @@ export default function ComponentLibrary() {
             </button>
           )}
 
+          {/* Hidden entirely when there is nothing to filter by. */}
+          {(PROVIDERS.length > 0 || HAS_BBG) && (
           <div>
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">
               Providers
             </p>
             <div className="flex flex-wrap gap-1">
               {/* ByteByteGo filter */}
+              {HAS_BBG && (
               <button
-                onClick={() => setActiveCategory('bbg' as any)}
+                onClick={() => setActiveCategory(BBG_TAG)}
                 className={[
                   'px-2 py-1 rounded-md text-[11px] font-medium transition-all border',
-                  activeCategory === ('bbg' as any)
+                  activeCategory === BBG_TAG
                     ? 'bg-slate-700 text-white border-transparent shadow-sm'
                     : 'text-slate-600 bg-slate-50 border-slate-200 hover:border-slate-300',
                 ].join(' ')}
               >
                 BBG
               </button>
+              )}
               {PROVIDERS.map((p) => {
                 const active = activeCategory === p.id
                 return (
@@ -196,6 +220,7 @@ export default function ComponentLibrary() {
               })}
             </div>
           </div>
+          )}
 
           <div>
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">
