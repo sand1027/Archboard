@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  MousePointer2, Hand, Square, Circle, Diamond,
+  MousePointer2, Hand, Crop, Square, Circle, Diamond,
   Triangle, Type, Minus, ChevronDown,
   ArrowRight, Hexagon, Star, MoreHorizontal,
 } from 'lucide-react'
@@ -56,6 +56,7 @@ interface ToolDef {
 const NAV_TOOLS: ToolDef[] = [
   { tool: 'select', icon: <MousePointer2 className="w-4 h-4" />, label: 'Select', shortcut: 'V' },
   { tool: 'hand', icon: <Hand className="w-4 h-4" />, label: 'Hand', shortcut: 'H' },
+  { tool: 'capture', icon: <Crop className="w-4 h-4" />, label: 'Capture to notes', shortcut: 'C' },
 ]
 
 const PRIMARY_SHAPES: ToolDef[] = [
@@ -201,7 +202,7 @@ export default function ShapesToolbar() {
 
   const primary = boardMode === 'lld' ? LLD_PRIMARY_SHAPES : PRIMARY_SHAPES
   const more = boardMode === 'lld' ? LLD_MORE_SHAPES : MORE_SHAPES
-  const isShapeTool = activeTool !== 'select' && activeTool !== 'hand'
+  const isShapeTool = activeTool !== 'select' && activeTool !== 'hand' && activeTool !== 'capture'
   const moreActive = more.some((t) => t.tool === activeTool)
 
   return (
