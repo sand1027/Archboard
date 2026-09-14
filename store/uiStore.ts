@@ -92,6 +92,11 @@ interface UiState {
   shareModalOpen: boolean
   simulationOpen: boolean
   estimateOpen: boolean
+  /**
+   * The text editor pane. Shares the left rail with the component library, because writing
+   * code and dragging components are not things anyone does at the same moment.
+   */
+  codeOpen: boolean
 
   // Context menu
   contextMenu: {
@@ -131,6 +136,7 @@ interface UiState {
   setShareModalOpen: (open: boolean) => void
   setSimulationOpen: (open: boolean) => void
   setEstimateOpen: (open: boolean) => void
+  setCodeOpen: (open: boolean) => void
   setContextMenu: (menu: UiState['contextMenu']) => void
   hideContextMenu: () => void
   setTheme: (theme: Theme) => void
@@ -172,6 +178,7 @@ export const useUiStore = create<UiState>()(
       shareModalOpen: false,
       simulationOpen: false,
       estimateOpen: false,
+      codeOpen: false,
       contextMenu: { visible: false, x: 0, y: 0, type: 'canvas' },
       theme: 'light',
 
@@ -216,6 +223,14 @@ export const useUiStore = create<UiState>()(
         set(simulationOpen ? { simulationOpen, estimateOpen: false } : { simulationOpen }),
       setEstimateOpen: (estimateOpen) =>
         set(estimateOpen ? { estimateOpen, simulationOpen: false } : { estimateOpen }),
+      /**
+       * Deliberately does not touch `libraryOpen`.
+       *
+       * The rail renders code in preference to the library, so closing the code pane brings
+       * the library back on its own. Forcing it shut here would persist that — `libraryOpen`
+       * is stored — and leave the rail empty after the pane closed.
+       */
+      setCodeOpen: (codeOpen) => set({ codeOpen }),
       setContextMenu: (contextMenu) => set({ contextMenu }),
       hideContextMenu: () =>
         set((state) => ({ contextMenu: { ...state.contextMenu, visible: false } })),
