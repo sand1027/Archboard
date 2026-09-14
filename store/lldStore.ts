@@ -86,6 +86,13 @@ interface LldState {
   applyEdgeChangesFor: (scopeId: string, diagramId: string, changes: EdgeChange[]) => void
   removeEdge: (scopeId: string, diagramId: string, edgeId: string) => void
   setEdges: (scopeId: string, diagramId: string, edges: LldEdge[]) => void
+  /** Bulk-load template content into the diagram of `type`, creating it if needed. */
+  loadTemplate: (
+    scopeId: string,
+    type: LldDiagramType,
+    name: string,
+    snapshot: LldDiagramSnapshot
+  ) => void
 
   /** Connector preset armed from the palette; used by the next drawn edge. */
   armedEdgeKind: LldEdgeKind | null
@@ -432,6 +439,49 @@ export const useLldStore = create<LldState>()(
           edges,
         }))
         return next ? { workspaces: next } : {}
+      }),
+
+    /**
+     * Replace a diagram of `type` with template content, creating it if absent.
+     *
+     * Templates need a bulk door: the alternative is a loop of `addShape` followed by
+     * `setEdges`, which writes a store update per shape and leaves the diagram briefly
+     * holding edges whose endpoints do not exist yet.
+     *
+     * Selects the diagram it wrote to, since a starter the user cannot see is the bug this
+     * replaced.
+     */
+    loadTemplate: (scopeId, type, name, snapshot) =>
+      set((state) => {
+        const ws = state.workspaces[scopeId]
+        if (!ws) return {}
+
+        const existing = ws.diagrams.find((d) => d.type === type)
+        const target: LldDiagram = {
+          ...(existing ?? emptyDiagram(generateId(), type, name)),
+          name,
+          shapes: snapshot.shapes,
+          edges: snapshot.edges,
+          // Content arrives laid out, so start where it is rather than wherever the user
+          // last panned an empty canvas.
+          viewport: { x: 0, y: 0, zoom: 1 },
+        }
+
+        const diagrams = existing
+          ? ws.diagrams.map((d) => (d.id === target.id ? target : d))
+          : [...ws.diagrams, target]
+
+        return {
+          workspaces: {
+            ...state.workspaces,
+            [scopeId]: {
+              ...ws,
+              diagrams,
+              activeDiagramId: target.id,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        }
       }),
 
     // ── history (scoped per diagram) ──────────────────────────────────────────
