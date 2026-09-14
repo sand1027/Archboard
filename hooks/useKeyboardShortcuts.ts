@@ -5,6 +5,7 @@ import { useReactFlow } from '@xyflow/react'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
+import { isEditingText } from '@/lib/ui/isEditingText'
 
 export function useKeyboardShortcuts() {
   const reactFlow = useReactFlow()
@@ -12,9 +13,7 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey
-      const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase()
-      // Don't fire shortcuts when user is typing in an input
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+      if (isEditingText(e.target) || isEditingText()) return
 
       // Undo
       if (meta && !e.shiftKey && e.key === 'z') {
@@ -76,8 +75,6 @@ export function useKeyboardShortcuts() {
 
       // Delete
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        // React Flow already handles this via deleteKeyCode prop,
-        // but we need to push history first
         const { selectedNodeIds, selectedEdgeIds } = useDiagramStore.getState()
         if (selectedNodeIds.length > 0 || selectedEdgeIds.length > 0) {
           const { nodes, edges } = useDiagramStore.getState()
