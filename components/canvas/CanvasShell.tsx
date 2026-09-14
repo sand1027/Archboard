@@ -7,7 +7,7 @@ import Whiteboard from './Whiteboard'
 // WhiteboardApp level so the toolbar shares context.
 //
 // Persistence deliberately does NOT live here: this component unmounts when the
-// user switches to LLD mode, which would silently stop autosave.
+// user switches to LLD mode, which would silently drop the save wiring.
 export default function CanvasShell() {
   useKeyboardShortcuts()
   return <Whiteboard />
