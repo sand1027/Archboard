@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { migrateDocument } from './documentPayload'
+import { NOTE_KINDS } from '@/types/notes'
 
 /**
  * Component configuration has to survive a save/load round trip, or every value the user
@@ -145,61 +146,154 @@ describe('DSL persistence', () => {
   })
 })
 
-describe('requirements persistence', () => {
+describe('notebook persistence', () => {
   const notes = {
-    items: [
+    pages: [
       {
-        id: 'req-1',
         kind: 'functional',
-        title: 'Users can upload a photo',
-        body: 'Up to 10MB, JPEG or PNG.',
-        done: false,
-        createdAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:00.000Z',
+        paper: 'ruled',
+        font: 'serif',
+        blocks: [
+          { id: 'blk-1', type: 'heading', text: 'Uploads' },
+          { id: 'blk-2', type: 'bullet', text: 'JPEG or PNG, up to 10MB' },
+        ],
       },
       {
-        id: 'req-2',
         kind: 'nonFunctional',
-        title: 'Feed loads under 200ms at p95',
-        body: '',
-        category: 'latency',
-        done: true,
-        createdAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:00.000Z',
+        paper: 'unruled',
+        font: 'sans',
+        blocks: [{ id: 'blk-3', type: 'body', text: 'Feed under 200ms at p95' }],
       },
     ],
   }
 
-  it('carries the requirements through', () => {
+  it('carries the pages and their blocks through', () => {
     const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
-    expect(doc?.notes?.items).toHaveLength(2)
-    expect(doc?.notes?.items[1]).toMatchObject({ category: 'latency', done: true })
+    const functional = doc?.notes?.pages.find((p) => p.kind === 'functional')
+
+    expect(functional).toMatchObject({ paper: 'ruled', font: 'serif' })
+    expect(functional?.blocks.map((b) => b.text)).toEqual(['Uploads', 'JPEG or PNG, up to 10MB'])
   })
 
-  /** Additive: a document written before requirements existed opens exactly as it did. */
-  it('leaves the requirements undefined when absent', () => {
+  /**
+   * The tabs are static, so every kind needs a page whether the document had one or not.
+   *
+   * Asserted against NOTE_KINDS rather than a literal list, so adding a page is a one-line
+   * change here instead of a failing test that says nothing useful.
+   */
+  it('produces a page for every kind', () => {
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
+    expect(doc?.notes?.pages.map((p) => p.kind)).toEqual(NOTE_KINDS)
+  })
+
+  /** Additive: a document written before the notebook existed opens exactly as it did. */
+  it('leaves the notebook undefined when absent', () => {
     expect(migrateDocument(docWith(NODE_WITH_CONFIG))?.notes).toBeUndefined()
   })
 
-  it('ignores an empty list rather than storing the key', () => {
-    expect(migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes: { items: [] } })?.notes).toBeUndefined()
+  it('ignores a notebook nobody wrote in', () => {
+    const empty = {
+      pages: [{ kind: 'functional', paper: 'unruled', font: 'sans', blocks: [{ id: 'b', type: 'body', text: '' }] }],
+    }
+    expect(migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes: empty })?.notes).toBeUndefined()
   })
 
-  it('drops an item with no recognisable kind', () => {
-    const doc = migrateDocument({
-      ...docWith(NODE_WITH_CONFIG),
-      notes: { items: [notes.items[0], { id: 'x', kind: 'wishful', title: 'no' }] },
-    })
-    expect(doc?.notes?.items).toHaveLength(1)
+  it('keeps text written under a block type it does not recognise', () => {
+    const odd = {
+      pages: [
+        {
+          kind: 'functional',
+          paper: 'unruled',
+          font: 'sans',
+          blocks: [{ id: 'b', type: 'blockquote', text: 'still mine' }],
+        },
+      ],
+    }
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes: odd })
+    const block = doc?.notes?.pages.find((p) => p.kind === 'functional')?.blocks[0]
+    expect(block).toMatchObject({ type: 'body', text: 'still mine' })
   })
 
   it('round-trips through JSON, which is how it is actually stored', () => {
     const raw = JSON.parse(JSON.stringify({ ...docWith(NODE_WITH_CONFIG), notes }))
-    expect(migrateDocument(raw)?.notes).toEqual(notes)
+    const doc = migrateDocument(raw)
+
+    const functional = doc?.notes?.pages.find((p) => p.kind === 'functional')
+    expect(functional?.blocks).toHaveLength(2)
+    expect(functional?.paper).toBe('ruled')
   })
 
-  it('carries requirements on a v1 flat document too', () => {
+  it('carries the notebook on a v1 flat document too', () => {
     const doc = migrateDocument({ nodes: [NODE_WITH_CONFIG], edges: [], notes })
-    expect(doc?.notes?.items).toHaveLength(2)
+    expect(doc?.notes?.pages).toHaveLength(NOTE_KINDS.length)
+  })
+
+  /** A document saved before trade-offs existed must gain the page, not be rejected. */
+  it('adds a page for a kind the stored document never had', () => {
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
+    const tradeoff = doc?.notes?.pages.find((p) => p.kind === 'tradeoff')
+
+    expect(tradeoff).toBeDefined()
+    expect(tradeoff?.blocks).toHaveLength(1)
+    expect(tradeoff?.blocks[0].text).toBe('')
+  })
+
+  it('carries rewritten Think-about questions through', () => {
+    const notes = {
+      pages: [
+        {
+          kind: 'functional',
+          paper: 'unruled',
+          font: 'sans',
+          blocks: [{ id: 'b', type: 'body', text: 'uploads' }],
+          prompts: [{ id: 'prm-1', label: 'Writes', question: 'What does a write persist?' }],
+        },
+      ],
+    }
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
+    const functional = doc?.notes?.pages.find((p) => p.kind === 'functional')
+    expect(functional?.prompts).toEqual([
+      { id: 'prm-1', label: 'Writes', question: 'What does a write persist?' },
+    ])
+  })
+
+  it('carries an imported image through', () => {
+    const notes = {
+      pages: [
+        {
+          kind: 'scratch',
+          paper: 'unruled',
+          font: 'sans',
+          blocks: [
+            { id: 'img-1', type: 'image', text: 'API', src: '/icons/server.svg' },
+          ],
+        },
+      ],
+    }
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
+    const scratch = doc?.notes?.pages.find((p) => p.kind === 'scratch')
+    expect(scratch?.blocks[0]).toMatchObject({
+      type: 'image',
+      text: 'API',
+      src: '/icons/server.svg',
+    })
+  })
+
+  it('carries a resized image width through', () => {
+    const notes = {
+      pages: [
+        {
+          kind: 'scratch',
+          paper: 'unruled',
+          font: 'sans',
+          blocks: [
+            { id: 'img-1', type: 'image', text: 'API', src: '/icons/server.svg', widthPct: 55 },
+          ],
+        },
+      ],
+    }
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), notes })
+    const scratch = doc?.notes?.pages.find((p) => p.kind === 'scratch')
+    expect(scratch?.blocks[0]?.widthPct).toBe(55)
   })
 })

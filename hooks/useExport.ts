@@ -1,41 +1,32 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useReactFlow, getNodesBounds, getViewportForBounds } from '@xyflow/react'
+import { useReactFlow, getNodesBounds } from '@xyflow/react'
 import { useDiagramStore } from '@/store/diagramStore'
-import { exportPNG, exportJSON } from '@/lib/export/exportDiagram'
+import { exportCanvasForBounds, exportPNG, exportJSON } from '@/lib/export/exportDiagram'
 import type { Diagram } from '@/types/diagram'
-
-const PADDING = 40
 
 export function useExport() {
   const { getNodes } = useReactFlow()
   const { diagramId, diagramName, nodes, edges, viewport } = useDiagramStore()
 
   const getExportOptions = useCallback((diagramNameOverride?: string) => {
-    const allNodes = getNodes()
-    if (allNodes.length === 0) {
-      // No nodes — use a default 1200×800 canvas centred at origin
+    const visible = getNodes().filter((node) => !node.hidden)
+    if (visible.length === 0) {
+      const empty = exportCanvasForBounds({ x: 0, y: 0, width: 1, height: 1 })
       return {
-        nodesBounds: { x: 0, y: 0, width: 1200, height: 800 },
-        viewportTransform: 'translate(0, 0) scale(1)',
+        nodesBounds: { x: 0, y: 0, width: 1, height: 1 },
+        viewportTransform: empty.transform,
         diagramName: diagramNameOverride ?? diagramName,
       }
     }
 
-    const bounds = getNodesBounds(allNodes)
-    const imageW = Math.max(1200, bounds.width  + PADDING * 2)
-    const imageH = Math.max(800,  bounds.height + PADDING * 2)
-
-    // Get the transform that fits the diagram into our export canvas
-    const vp = getViewportForBounds(bounds, imageW, imageH, 0.5, 2, PADDING)
-
-    // Convert to CSS transform string
-    const transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`
+    const bounds = getNodesBounds(visible)
+    const canvas = exportCanvasForBounds(bounds)
 
     return {
       nodesBounds: bounds,
-      viewportTransform: transform,
+      viewportTransform: canvas.transform,
       diagramName: diagramNameOverride ?? diagramName,
     }
   }, [getNodes, diagramName])

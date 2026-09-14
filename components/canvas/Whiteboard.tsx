@@ -40,10 +40,13 @@ import UmlEntityNodeComponent from './UmlEntityNode'
 import UmlLifelineNodeComponent from './UmlLifelineNode'
 import IconNodeComponent from './IconNode'
 import ShapesToolbar from './ShapesToolbar'
+import CaptureMarquee from './CaptureMarquee'
 import CanvasControls from './CanvasControls'
 import ContextMenuComponent from '../ui/ContextMenu'
 import PacketLayer from '../simulation/PacketLayer'
 import CursorLayer from '../collab/CursorLayer'
+import { useEditingText } from '@/hooks/useEditingText'
+import { isEditingText } from '@/lib/ui/isEditingText'
 import { generateId } from '@/lib/canvas/ids'
 import { nodeBounds, centerInside, isContainerNode } from '@/lib/canvas/geometry'
 import { DND_MIME } from '@/lib/canvas/dnd'
@@ -145,6 +148,7 @@ export default function Whiteboard() {
   // dragging is suspended — otherwise the two gestures fight each other.
   const armedConnectionType = useUiStore((s) => s.armedConnectionType)
   const connectMode = armedConnectionType !== null
+  const editingText = useEditingText()
 
   // Only the (glyph, colour) pairs actually in use reach <defs>. Without these
   // the url(#…) marker references resolve to nothing and arrowheads disappear.
@@ -179,10 +183,9 @@ export default function Whiteboard() {
   // ── keyboard shortcuts for tools ──────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement)?.tagName?.toLowerCase()
-      if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+      if (isEditingText(e.target) || isEditingText()) return
       const map: Record<string, typeof activeTool> = {
-        v: 'select', h: 'hand',
+        v: 'select', h: 'hand', c: 'capture',
         r: 'rectangle', o: 'ellipse', d: 'diamond',
         t: 'triangle', a: 'arrow', l: 'line', x: 'text',
         p: 'parallelogram',
@@ -478,7 +481,7 @@ export default function Whiteboard() {
     (e: React.PointerEvent) => {
       if (e.button !== 0) return
       const tool = useUiStore.getState().activeTool
-      if (tool === 'select' || tool === 'hand') return
+      if (tool === 'select' || tool === 'hand' || tool === 'capture') return
 
       const target = e.target as HTMLElement
       // Only start draws on the empty pane (not nodes, handles, toolbar, etc.)
@@ -810,13 +813,14 @@ export default function Whiteboard() {
 
   // Cursor style based on active tool
   const cursorStyle =
-    activeTool === 'hand'   ? 'grab' :
-    activeTool === 'select' ? 'default' : 'crosshair'
+    activeTool === 'hand'    ? 'grab' :
+    activeTool === 'select'  ? 'default' :
+    activeTool === 'capture' ? 'crosshair' : 'crosshair'
 
   return (
     <div
       ref={reactFlowWrapper}
-      className="w-full h-full"
+      className="relative w-full h-full"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onContextMenu={handleContextMenu}
@@ -856,7 +860,7 @@ export default function Whiteboard() {
         snapGrid={[gridSize, gridSize]}
         selectionMode={SelectionMode.Partial}
         multiSelectionKeyCode="Shift"
-        deleteKeyCode={['Backspace', 'Delete']}
+        deleteKeyCode={editingText ? null : ['Backspace', 'Delete']}
         // Disable pan/selection/node-drag while a shape tool is active
         panOnDrag={activeTool === 'hand' || activeTool === 'select'}
         selectionOnDrag={activeTool === 'select'}
@@ -933,7 +937,7 @@ export default function Whiteboard() {
           nodeBorderRadius={3}
           className="!bg-white !border !border-gray-200 !rounded-xl !shadow-md"
           maskColor="rgba(241,245,249,0.6)"
-          style={{ width: 160, height: 100 }}
+          style={{ width: 132, height: 84 }}
           zoomable
           pannable
         />
@@ -950,11 +954,13 @@ export default function Whiteboard() {
           <ShapesToolbar />
         </Panel>
 
-        {/* View controls, moved off the top bar so it stops overflowing. */}
-        <Panel position="bottom-left" style={{ marginBottom: 16, marginLeft: 16 }}>
+        {/* View controls sit with the minimap so they do not crowd the drawing toolbar. */}
+        <Panel position="bottom-right" style={{ marginBottom: 112, marginRight: 16 }}>
           <CanvasControls />
         </Panel>
       </ReactFlow>
+
+      <CaptureMarquee />
 
       {contextMenu.visible && <ContextMenuComponent />}
     </div>

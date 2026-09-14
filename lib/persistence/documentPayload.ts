@@ -17,12 +17,12 @@ import { normaliseNodesConnectable } from '@/lib/canvas/nodeConnectivity'
 import { useEstimateStore } from '@/store/estimateStore'
 import { normaliseWorkload, sanitiseOverrides } from '@/lib/estimate/workload'
 import { normalisePins, useDslStore } from '@/store/dslStore'
-import { normaliseItems, useNotesStore } from '@/store/notesStore'
+import { normalisePages, useNotesStore } from '@/store/notesStore'
 import type { BoardMode, BoardSnapshot } from '@/types/diagram'
 import type { LldWorkspace } from '@/types/lld'
 import type { WorkloadDocument } from '@/types/estimate'
 import type { DslDocument } from '@/types/dslDocument'
-import type { NotesDocument } from '@/types/notes'
+import { isPageUntouched, type NotesDocument } from '@/types/notes'
 
 export const DOCUMENT_VERSION = 5
 
@@ -38,10 +38,10 @@ export interface ArchboardDocument {
    */
   workload?: WorkloadDocument
   /**
-   * Requirements — functional, non-functional and assumptions.
+   * The notebook — functional, non-functional and assumption pages.
    *
    * Additive and unversioned: nothing branches on `version`, so an optional key that needs no
-   * migration logic does not need a bump. Absent on any diagram with none written.
+   * migration logic does not need a bump. Absent on any diagram nobody wrote notes in.
    */
   notes?: NotesDocument
   /**
@@ -239,16 +239,17 @@ function normaliseWorkloadDoc(input: unknown): WorkloadDocument | undefined {
  * like an empty editor next to a full canvas.
  */
 /**
- * Accept a stored notes bag only if it is shaped like one.
+ * Accept a stored notebook only if it is shaped like one.
  *
- * Returns undefined for an empty list as well as a missing key, so a diagram whose last
- * requirement was deleted stops carrying the key at all.
+ * `normalisePages` guarantees three pages in a fixed order and drops unknown block types, so
+ * what comes back is always renderable. Undefined for a notebook nobody wrote in, which keeps
+ * the key out of documents that never used the feature.
  */
 function normaliseNotesDoc(input: unknown): NotesDocument | undefined {
   if (!isRecord(input)) return undefined
 
-  const items = normaliseItems(input.items)
-  return items.length > 0 ? { items } : undefined
+  const pages = normalisePages(input.pages)
+  return pages.every(isPageUntouched) ? undefined : { pages }
 }
 
 function normaliseDslDoc(input: unknown): DslDocument | undefined {

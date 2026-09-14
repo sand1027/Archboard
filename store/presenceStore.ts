@@ -8,8 +8,8 @@ import type { CollabStatus, PeerState } from '@/types/collab'
  *
  * Separate from diagramStore because presence is not document state: it must not be
  * persisted, must not participate in undo, and changes many times a second while a cursor
- * moves. Mixing it into the document store would push cursor traffic through the autosave
- * subscription and the history stack.
+ * moves. Mixing it into the document store would push cursor traffic through the save
+ * dirty-flag subscription and the history stack.
  */
 interface PresenceState {
   status: CollabStatus

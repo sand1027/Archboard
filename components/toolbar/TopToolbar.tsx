@@ -12,8 +12,11 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useDiagramStore } from '@/store/diagramStore'
 import LldComponentPicker from '@/components/lld/LldComponentPicker'
+import ToolbarMenu from './ToolbarMenu'
 import { useHistoryStore } from '@/store/historyStore'
 import { useUiStore } from '@/store/uiStore'
+import { useNotesStore } from '@/store/notesStore'
+import { isEditingText } from '@/lib/ui/isEditingText'
 
 interface TopToolbarProps {
   diagramId?: string
@@ -71,6 +74,10 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
   )
 
   const handleUndo = useCallback(() => {
+    if (isEditingText()) {
+      useNotesStore.getState().undo()
+      return
+    }
     const { nodes, edges } = useDiagramStore.getState()
     const snapshot = undo({ nodes, edges })
     if (snapshot) {
@@ -80,6 +87,10 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
   }, [undo])
 
   const handleRedo = useCallback(() => {
+    if (isEditingText()) {
+      useNotesStore.getState().redo()
+      return
+    }
     const { nodes, edges } = useDiagramStore.getState()
     const snapshot = redo({ nodes, edges })
     if (snapshot) {
@@ -100,7 +111,7 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
           alt="ArchBoard"
           width={148}
           height={32}
-          className="h-7 w-auto object-contain"
+          className="h-6 w-auto object-contain"
           priority
         />
       </div>
@@ -200,10 +211,8 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
       )}
 
       {/*
-        Zoom, fit, grid and snap used to sit here. They are now a floating cluster on the
-        canvas itself — see components/canvas/CanvasControls.tsx. They describe how you are
-        looking at the canvas rather than anything about the diagram, and five more buttons
-        was what pushed this row past the width of a laptop screen.
+        Zoom, fit, grid and snap used to sit here. They are now a compact percent chip
+        above the minimap — see components/canvas/CanvasControls.tsx.
       */}
 
       {/* Spacer */}
@@ -211,17 +220,6 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
 
       {/* Right side actions. Never shrinks — these are the ones that must stay reachable. */}
       <div className="flex items-center gap-1 shrink-0">
-        <ToolbarButton
-          onClick={() => setTemplateModalOpen(true)}
-          title="Templates"
-          icon={<LayoutTemplate className="w-4 h-4" />}
-          label="Templates"
-        />
-        <ToolbarButton
-          onClick={() => setShortcutsModalOpen(true)}
-          title="Keyboard shortcuts"
-          icon={<Keyboard className="w-4 h-4" />}
-        />
         {/*
           The three panels, as one segmented control.
 
@@ -262,9 +260,9 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
           <PanelToggle
             onClick={() => setNotesOpen(!notesOpen)}
             active={notesOpen}
-            title="Functional and non-functional requirements"
+            title="Notes — FR, NFR, assumptions and trade-offs"
             icon={<NotebookPen className="w-3.5 h-3.5" />}
-            label="Requirements"
+            label="Notes"
             activeClass="bg-white text-teal-700 shadow-sm"
           />
         </div>
@@ -287,35 +285,52 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
           </button>
         )}
 
-        {isCloudMode && onHistoryOpen && (
-          <ToolbarButton
-            onClick={onHistoryOpen}
-            title="Version history"
-            icon={<Clock className="w-4 h-4" />}
-            label="History"
-          />
-        )}
+        {/*
+          Templates, shortcuts and history behind one button.
+
+          All three are session-opening actions rather than things you reach for while working, so
+          they were paying for permanent space with attention they did not need.
+        */}
+        <ToolbarMenu
+          items={[
+            {
+              label: 'Templates',
+              icon: <LayoutTemplate className="h-3.5 w-3.5" />,
+              onSelect: () => setTemplateModalOpen(true),
+            },
+            ...(isCloudMode && onHistoryOpen
+              ? [
+                  {
+                    label: 'Version history',
+                    icon: <Clock className="h-3.5 w-3.5" />,
+                    onSelect: onHistoryOpen,
+                  },
+                ]
+              : []),
+            {
+              label: 'Keyboard shortcuts',
+              icon: <Keyboard className="h-3.5 w-3.5" />,
+              onSelect: () => setShortcutsModalOpen(true),
+              hint: '?',
+            },
+          ]}
+        />
 
         <div className="w-px h-5 bg-gray-200 mx-1" />
 
-        {/* Save button — only in cloud mode */}
         {/*
-          Save state, not just a Save button.
-
-          Saving is now automatic, so this mostly reports rather than invites — but it stays
-          clickable, because when a save has failed the one thing someone wants is to try
-          again. The idle-but-dirty state is the one that was missing: work sitting only in
-          this browser used to look identical to work safely in the cloud.
+          Save is always a click (or ⌘S). The label reports whether that write has happened;
+          it never fires on its own.
         */}
-        {isCloudMode && onSave && (
+        {onSave && (
           <button
             onClick={onSave}
             disabled={saveStatus === 'saving'}
             title={
               saveStatus === 'error'
-                ? 'Could not reach the server — click to retry'
+                ? 'Could not save — click to retry'
                 : unsaved
-                  ? 'Unsaved changes, saving shortly (⌘S to save now)'
+                  ? 'Unsaved changes (⌘S)'
                   : 'Everything is saved (⌘S)'
             }
             className={[
@@ -348,7 +363,7 @@ export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onH
               {saveStatus === 'saving' ? 'Saving…'
                : saveStatus === 'saved' ? 'Saved'
                : saveStatus === 'error' ? 'Retry'
-               : unsaved ? 'Unsaved'
+               : unsaved ? 'Save'
                : 'Saved'}
             </span>
           </button>
@@ -438,20 +453,26 @@ interface PanelToggleProps {
   activeClass: string
 }
 
+/**
+ * Icon only. The name lives on the tooltip and `aria-label`.
+ *
+ * Labelling the open panel used to widen the group every time Notes (or Capacity) came on,
+ * which is what shoved Export off the right edge on a laptop. Four icons stay one width.
+ */
 function PanelToggle({ onClick, icon, title, label, active, activeClass }: PanelToggleProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
+      aria-label={label}
       aria-pressed={active}
       className={[
-        'flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors',
+        'flex items-center rounded-md px-2 py-1 transition-colors',
         active ? activeClass : 'text-slate-500 hover:text-slate-700',
       ].join(' ')}
     >
       {icon}
-      <span className="hidden md:inline">{label}</span>
     </button>
   )
 }

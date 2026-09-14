@@ -11,7 +11,7 @@ import KeyboardShortcutsModal from './ui/KeyboardShortcutsModal'
 import ExportModal from './ui/ExportModal'
 import SimulationPanel from './simulation/SimulationPanel'
 import EstimatePanel from './estimate/EstimatePanel'
-import RequirementsPanel from './notes/RequirementsPanel'
+import NotesNotebook from './notes/NotesNotebook'
 import CollaborationLayer from './collab/CollaborationLayer'
 import ShareModal from './collab/ShareModal'
 import LldWorkspace from './lld/LldWorkspace'
@@ -47,9 +47,10 @@ function AppInner({
   userEmail,
   teamId,
 }: WhiteboardAppProps) {
-  // Autosave must survive the HLD↔LLD swap, so it is owned here rather than
-  // by CanvasShell, which unmounts in LLD mode.
-  useDiagramPersistence()
+  // Persistence must survive the HLD↔LLD swap, so it is owned here rather than
+  // by CanvasShell, which unmounts in LLD mode. Guest boards only: cloud diagrams
+  // save through onSave from DiagramEditor.
+  const localPersist = useDiagramPersistence(!diagramId)
 
   // Owned here rather than by the code pane: a diagram authored as text has to render on
   // load whether or not the editor happens to be open.
@@ -79,9 +80,9 @@ function AppInner({
     <div className="flex h-screen flex-col overflow-hidden bg-slate-100/40">
       <TopToolbar
         diagramId={diagramId}
-        saveStatus={saveStatus}
-        unsaved={unsaved}
-        onSave={onSave}
+        saveStatus={saveStatus ?? localPersist.saveStatus}
+        unsaved={unsaved ?? localPersist.dirty}
+        onSave={onSave ?? localPersist.save}
         onHistoryOpen={onHistoryOpen}
         userEmail={userEmail}
       />
@@ -136,14 +137,18 @@ function AppInner({
           {/* Right: capacity, simulation or inspector — one at a time */}
           <aside
             className="flex-shrink-0 overflow-hidden border-l border-slate-200/80 bg-white transition-all duration-200"
+            // Writing needs more room than reading a form does, so notes get a wider rail.
             style={{
-              width:
-                inspectorOpen || simulationOpen || estimateOpen || notesOpen ? 280 : 0,
+              width: notesOpen
+                ? 420
+                : inspectorOpen || simulationOpen || estimateOpen
+                  ? 280
+                  : 0,
             }}
           >
             {notesOpen ? (
-              <div className="h-full w-[280px] overflow-hidden">
-                <RequirementsPanel />
+              <div className="h-full min-h-0 w-[420px] overflow-hidden">
+                <NotesNotebook />
               </div>
             ) : estimateOpen ? (
               <div className="h-full w-[280px] overflow-hidden">

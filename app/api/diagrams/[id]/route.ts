@@ -27,7 +27,7 @@ export async function GET(
   return NextResponse.json({ diagram: data as DiagramRow })
 }
 
-// PATCH /api/diagrams/[id] — autosave
+// PATCH /api/diagrams/[id] — save the current document
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

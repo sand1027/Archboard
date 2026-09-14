@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useLldStore } from '@/store/lldStore'
 import { useNotesStore } from '@/store/notesStore'
@@ -13,48 +13,49 @@ import {
 
 const LEGACY_KEYS = ['archboard-diagram', 'archboard-diagram-v2']
 const STORAGE_KEY = 'archboard-diagram-v3'
-const AUTOSAVE_DELAY = 1500
 
-export function useDiagramPersistence() {
-  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+export type LocalSaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
-  // ── hydrate once, migrating forward from any older key ────────────────────
+/**
+ * Browser-only persistence for guest mode.
+ *
+ * Hydrates from localStorage on load, then writes only when `save` is called. Cloud diagrams
+ * do not use this path — they load from the server and save through `useDiagramSync`.
+ */
+export function useDiagramPersistence(enabled: boolean): {
+  dirty: boolean
+  saveStatus: LocalSaveStatus
+  save: () => void
+} {
+  const [dirty, setDirty] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<LocalSaveStatus>('idle')
+
   useEffect(() => {
+    if (!enabled) return
+
     try {
       const current = localStorage.getItem(STORAGE_KEY)
-      if (current && applyRawDocument(JSON.parse(current))) return
+      if (current && applyRawDocument(JSON.parse(current))) {
+        // Loaded. Fall through to the dirty subscription below.
+      } else {
+        for (const key of LEGACY_KEYS) {
+          const raw = localStorage.getItem(key)
+          if (!raw) continue
 
-      for (const key of LEGACY_KEYS) {
-        const raw = localStorage.getItem(key)
-        if (!raw) continue
+          const migrated = migrateDocument(JSON.parse(raw))
+          if (!migrated) continue
 
-        const migrated = migrateDocument(JSON.parse(raw))
-        if (!migrated) continue
-
-        applyRawDocument(migrated)
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
-        localStorage.removeItem(key)
-        return
+          applyRawDocument(migrated)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
+          localStorage.removeItem(key)
+          break
+        }
       }
     } catch {
       // Corrupt storage — fall through to store defaults.
     }
-  }, [])
 
-  // ── debounced autosave, covering both the HLD boards and LLD workspaces ───
-  useEffect(() => {
-    const scheduleSave = () => {
-      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
-      autosaveTimer.current = setTimeout(() => {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(buildDocument()))
-        } catch (err) {
-          // Quota exceeded is the realistic failure here, and the document now
-          // grows with LLD content. Surface it instead of failing silently.
-          console.error('[archboard] local autosave failed', err)
-        }
-      }, AUTOSAVE_DELAY)
-    }
+    const onChange = () => setDirty(true)
 
     const unsubDiagram = useDiagramStore.subscribe(
       (state) => ({
@@ -65,30 +66,45 @@ export function useDiagramPersistence() {
         activeBoard: state.activeBoard,
         viewport: state.viewport,
       }),
-      scheduleSave
+      onChange
     )
-
-    const unsubLld = useLldStore.subscribe((state) => state.workspaces, scheduleSave)
-
-    // The capacity workload is part of the document too. Without this it was written by
-    // buildDocument but nothing ever scheduled the write, so editing the estimate on its
-    // own was lost unless an unrelated node change happened to save within the window.
-    //
-    // Unselected because the workload is the whole of that store's state — its only other
-    // members are actions, which never change — so any update is a change worth saving.
-    const unsubEstimate = useEstimateStore.subscribe(scheduleSave)
-
-    // Requirements are part of the document too, and for the same reason as the workload
-    // above: without this, writing them and touching nothing else would lose the lot.
-    // Unselected because the item list is the whole of that store's state.
-    const unsubNotes = useNotesStore.subscribe(scheduleSave)
+    const unsubLld = useLldStore.subscribe((state) => state.workspaces, onChange)
+    const unsubEstimate = useEstimateStore.subscribe(onChange)
+    const unsubNotes = useNotesStore.subscribe(onChange)
 
     return () => {
       unsubDiagram()
       unsubLld()
       unsubEstimate()
       unsubNotes()
-      if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
-  }, [])
+  }, [enabled])
+
+  useEffect(() => {
+    if (!enabled || !dirty) return
+
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty, enabled])
+
+  const save = useCallback(() => {
+    if (!enabled) return
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(buildDocument()))
+      setDirty(false)
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 2000)
+    } catch (err) {
+      console.error('[archboard] local save failed', err)
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 3000)
+    }
+  }, [enabled])
+
+  return { dirty, saveStatus, save }
 }

@@ -6,6 +6,8 @@ import LldCanvas from './LldCanvas'
 import LldDiagramTabs from './LldDiagramTabs'
 import LldInspector from './LldInspector'
 import LldPalette from './LldPalette'
+import NotesNotebook from '@/components/notes/NotesNotebook'
+import { useUiStore } from '@/store/uiStore'
 import type { ArchitectureEdge, ArchitectureNode } from '@/types/diagram'
 import type { LldDiagramType } from '@/types/lld'
 
@@ -42,6 +44,7 @@ export default function LldWorkspace({
   paletteOpen = true,
   inspectorOpen = true,
 }: LldWorkspaceProps) {
+  const notesOpen = useUiStore((s) => s.notesOpen)
   const ensureWorkspace = useLldStore((s) => s.ensureWorkspace)
   const workspace = useLldWorkspaceFor(scopeId)
 
@@ -80,15 +83,25 @@ export default function LldWorkspace({
           )}
         </main>
 
+        {/*
+          Notes share this rail with the inspector.
+          
+          The notebook is per-diagram rather than per-board, so it has to be reachable while
+          drawing the low-level detail too — that is often where an assumption gets made.
+        */}
         <aside
           className="shrink-0 overflow-hidden border-l border-slate-200/80 transition-[width] duration-200"
-          style={{ width: inspectorOpen ? 280 : 0 }}
+          style={{ width: notesOpen ? 420 : inspectorOpen ? 280 : 0 }}
         >
-          {inspectorOpen && activeDiagram && (
+          {notesOpen ? (
+            <div className="h-full min-h-0 w-[420px] overflow-hidden">
+              <NotesNotebook />
+            </div>
+          ) : inspectorOpen && activeDiagram ? (
             <div className="h-full w-[280px]">
               <LldInspector scopeId={scopeId} diagram={activeDiagram} />
             </div>
-          )}
+          ) : null}
         </aside>
       </div>
     </div>
