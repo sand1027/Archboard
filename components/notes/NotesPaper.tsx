@@ -39,6 +39,7 @@ export default function NotesPaper({ paper, font, onPressEmptyArea, children }: 
 
   return (
     <div
+      data-notes-paper
       onMouseDown={(event) => {
         // Only when the press missed every block. Letting it through otherwise would move the
         // caret to the end of the page on every click into the middle of a sentence.
