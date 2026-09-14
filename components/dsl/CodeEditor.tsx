@@ -48,6 +48,8 @@ export interface CodeEditorProps {
   onChange: (value: string) => void
   diagnostics: Diagnostic[]
   placeholder?: string
+  /** Put the caret in the editor so paste works immediately on an empty pane. */
+  autoFocus?: boolean
 }
 
 export default function CodeEditor({
@@ -55,6 +57,7 @@ export default function CodeEditor({
   onChange,
   diagnostics,
   placeholder,
+  autoFocus = false,
 }: CodeEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const overlayRef = useRef<HTMLPreElement>(null)
@@ -82,6 +85,10 @@ export default function CodeEditor({
   }, [])
 
   useLayoutEffect(syncScroll, [value, syncScroll])
+
+  useLayoutEffect(() => {
+    if (autoFocus) textareaRef.current?.focus()
+  }, [autoFocus])
 
   const updateCaretLine = useCallback(() => {
     const textarea = textareaRef.current
@@ -199,6 +206,7 @@ export default function CodeEditor({
           autoCorrect="off"
           aria-label="Diagram source code"
           placeholder={placeholder}
+          autoFocus={autoFocus}
           className={`${TEXT_STYLE} ${PADDING} absolute inset-0 h-full w-full resize-none overflow-auto whitespace-pre-wrap break-words border-0 bg-transparent text-transparent caret-slate-900 outline-none placeholder:text-slate-300`}
         />
       </div>
