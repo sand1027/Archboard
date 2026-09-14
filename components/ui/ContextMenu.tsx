@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Copy, Trash2, Layers, PlusCircle, Maximize2, MousePointer2, Square } from 'lucide-react'
+import { Copy, Image as ImageIcon, Trash2, Layers, PlusCircle, Maximize2, MousePointer2, NotebookPen, Square } from 'lucide-react'
 import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useHistoryStore } from '@/store/historyStore'
+import { useNotesStore } from '@/store/notesStore'
+import { describeSelection, imagesFromSelection } from '@/lib/notes/fromCanvas'
 import type { FrameNodeData } from '@/types/architecture'
 import type { ArchitectureNode } from '@/types/diagram'
 import { useReactFlow } from '@xyflow/react'
@@ -42,6 +44,32 @@ export default function ContextMenu() {
 
   const wrap = (fn: () => void) => () => { fn(); hideContextMenu() }
 
+  /**
+   * Write a canvas selection into the notebook and show it.
+   *
+   * Goes to whichever page is open rather than a fixed one: if you are on Trade-offs weighing a
+   * choice, the components you just selected belong there, not filed away somewhere else.
+   *
+   * Opening the panel is part of the action — a note you cannot see was not obviously taken.
+   */
+  const sendToNotes = (ids: string[]) => {
+    const blocks = describeSelection(nodes, edges, ids)
+    if (blocks.length === 0) return
+
+    const { activeKind, appendBlocks } = useNotesStore.getState()
+    appendBlocks(activeKind, blocks)
+    useUiStore.getState().setNotesOpen(true)
+  }
+
+  const importImagesToNotes = (ids: string[]) => {
+    const blocks = imagesFromSelection(nodes, ids)
+    if (blocks.length === 0) return
+
+    const { activeKind, appendBlocks } = useNotesStore.getState()
+    appendBlocks(activeKind, blocks)
+    useUiStore.getState().setNotesOpen(true)
+  }
+
   if (contextMenu.type === 'node' && contextMenu.targetId) {
     const nodeId = contextMenu.targetId
     return (
@@ -74,6 +102,30 @@ export default function ContextMenu() {
               })}
             />
           </>
+        )}
+        <MenuSeparator />
+        {/*
+          Capture the selection into the notebook.
+
+          Sends whatever is selected, falling back to the node under the cursor — right-clicking a
+          node inside a selection means "this lot", not "just this one".
+        */}
+        <MenuItem
+          icon={<NotebookPen className="w-4 h-4" />}
+          label={selectedNodeIds.length > 1 ? `Send ${selectedNodeIds.length} to notes` : 'Send to notes'}
+          onClick={wrap(() => sendToNotes(selectedNodeIds.includes(nodeId) ? selectedNodeIds : [nodeId]))}
+        />
+        {imagesFromSelection(
+          nodes,
+          selectedNodeIds.includes(nodeId) ? selectedNodeIds : [nodeId]
+        ).length > 0 && (
+          <MenuItem
+            icon={<ImageIcon className="w-4 h-4" />}
+            label="Import to notes"
+            onClick={wrap(() =>
+              importImagesToNotes(selectedNodeIds.includes(nodeId) ? selectedNodeIds : [nodeId])
+            )}
+          />
         )}
         <MenuSeparator />
         <MenuItem
@@ -144,6 +196,24 @@ export default function ContextMenu() {
         onClick={wrap(selectAll)}
         shortcut="⌘A"
       />
+      {/* Offered here too, since a box-selection is usually followed by a right-click on empty
+          canvas rather than on one of the selected nodes. */}
+      {selectedNodeIds.length > 0 && (
+        <>
+          <MenuItem
+            icon={<NotebookPen className="w-4 h-4" />}
+            label={`Send ${selectedNodeIds.length} to notes`}
+            onClick={wrap(() => sendToNotes(selectedNodeIds))}
+          />
+          {imagesFromSelection(nodes, selectedNodeIds).length > 0 && (
+            <MenuItem
+              icon={<ImageIcon className="w-4 h-4" />}
+              label="Import to notes"
+              onClick={wrap(() => importImagesToNotes(selectedNodeIds))}
+            />
+          )}
+        </>
+      )}
       <MenuSeparator />
       <MenuItem
         icon={<Maximize2 className="w-4 h-4" />}
