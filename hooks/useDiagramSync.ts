@@ -5,6 +5,7 @@ import { useDiagramStore } from '@/store/diagramStore'
 import { useDslStore } from '@/store/dslStore'
 import { useEstimateStore } from '@/store/estimateStore'
 import { useLldStore } from '@/store/lldStore'
+import { useNotesStore } from '@/store/notesStore'
 import { buildDocument } from '@/lib/persistence/documentPayload'
 
 /**
@@ -117,6 +118,7 @@ export function useDiagramSync(diagramId: string): DiagramSync {
       ),
       useLldStore.subscribe((state) => state.workspaces, onChange),
       useEstimateStore.subscribe(onChange),
+      useNotesStore.subscribe(onChange),
       // dslStore has no selector middleware, so compare by hand rather than firing on every
       // update: `diagnostics` changes on each recompile and is derived, not document state.
       useDslStore.subscribe((state) => {
