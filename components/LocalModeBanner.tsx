@@ -16,8 +16,9 @@ export default function LocalModeBanner() {
     <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-900">
       <HardDrive className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
       <p className="min-w-0">
-        <span className="font-semibold">Guest mode.</span> This diagram is saved in this browser
-        only — clearing site data will lose it, and sharing and version history need an account.
+        <span className="font-semibold">Guest mode.</span> Click Save to keep this diagram in
+        this browser — clearing site data will lose it, and sharing and version history need an
+        account.
       </p>
       <Link
         href="/auth"
