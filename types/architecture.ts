@@ -178,6 +178,16 @@ export interface ArchitectureNodeData extends Record<string, unknown> {
    * capacity fields above so config keys cannot collide with them.
    */
   config?: Record<string, ConfigValue>
+
+  /**
+   * The DSL name this node was compiled from, when the diagram is authored as text.
+   *
+   * Present only on generated nodes, which is what lets the sync layer replace what the text
+   * owns and leave everything drawn by hand alone. Without a marker it would have to replace
+   * the whole canvas and would silently delete every hand-drawn shape on each keystroke. Also
+   * the stable key a position pin is stored under, since node ids are regenerated per compile.
+   */
+  dslName?: string
 }
 
 /** A configuration value. Narrow on purpose: these round-trip through stored JSON. */
@@ -201,6 +211,13 @@ export interface ArchitectureEdgeData extends Record<string, unknown> {
    */
   offset?: ShapePoint
   metadata?: Record<string, unknown>
+  /**
+   * True when this edge was generated from the DSL.
+   *
+   * The edge counterpart of `dslName`. Edges have no name to carry, so a flag is enough —
+   * all it has to answer is "may the sync layer replace this".
+   */
+  dslOwned?: boolean
 }
 
 export interface FrameNodeData extends Record<string, unknown> {
@@ -213,6 +230,8 @@ export interface FrameNodeData extends Record<string, unknown> {
   /** Label position within the frame — defaults to top-left (8, 8) */
   labelX?: number
   labelY?: number
+  /** See ArchitectureNodeData.dslName. */
+  dslName?: string
 }
 
 // ─── Shape system ─────────────────────────────────────────────────────────────
@@ -268,6 +287,11 @@ export interface ShapeNodeData extends Record<string, unknown> {
   /** Node-local endpoints for freehand line / arrow */
   start?: ShapePoint
   end?: ShapePoint
+  /** See ArchitectureNodeData.dslName. */
+  dslName?: string
+  /** Explicit box, when the DSL sets one. Layout uses the shape's default otherwise. */
+  width?: number
+  height?: number
 }
 
 // ─── Edge style ───────────────────────────────────────────────────────────────
