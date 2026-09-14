@@ -14,6 +14,8 @@ import type { BoardMode } from '@/types/lld'
 export type ActiveTool =
   | 'select'
   | 'hand'
+  /** Drag a rectangle on the canvas; that picture is filed in notes. */
+  | 'capture'
   | 'rectangle'
   | 'ellipse'
   | 'diamond'
