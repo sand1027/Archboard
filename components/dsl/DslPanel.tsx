@@ -72,6 +72,7 @@ export default function DslPanel() {
   const setPins = useDslStore((s) => s.setPins)
 
   const setCodeOpen = useUiStore((s) => s.setCodeOpen)
+  const hasNodes = useDiagramStore((s) => s.nodes.length > 0)
 
   const errors = useMemo(() => diagnostics.filter((d) => d.severity === 'error'), [diagnostics])
   const warnings = useMemo(
@@ -175,16 +176,45 @@ export default function DslPanel() {
         </button>
       </div>
 
-      {source.trim() === '' ? (
-        <EmptyState onStart={insertStarter} onImport={importFromCanvas} />
-      ) : (
-        <CodeEditor
-          value={source}
-          onChange={setSource}
-          diagnostics={diagnostics}
-          placeholder="server api &quot;API Server&quot;"
-        />
+      {/*
+        The editor stays mounted even when the source is empty.
+
+        Replacing it with an empty-state used to be the whole pane, so select-all +
+        backspace (or deleting the example) left only "Start from an example" and
+        "Generate from this canvas" — no place to type or paste your own.
+      */}
+      {source.trim() === '' && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200/80 bg-slate-50/80 px-3 py-2">
+          <p className="mr-auto text-[11px] text-slate-500">
+            Type or paste your own code below.
+          </p>
+          <button
+            type="button"
+            onClick={insertStarter}
+            className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Sparkles className="h-3 w-3" />
+            Example
+          </button>
+          {hasNodes && (
+            <button
+              type="button"
+              onClick={importFromCanvas}
+              className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              <FileDown className="h-3 w-3" />
+              From canvas
+            </button>
+          )}
+        </div>
       )}
+      <CodeEditor
+        value={source}
+        onChange={setSource}
+        diagnostics={diagnostics}
+        autoFocus={source.trim() === ''}
+        placeholder={'# Type or paste here\nserver api "API Server"'}
+      />
 
       {/* diagnostics */}
       {diagnostics.length > 0 && (
@@ -253,40 +283,3 @@ function DiagnosticRow({ diagnostic }: { diagnostic: Diagnostic }) {
   )
 }
 
-function EmptyState({
-  onStart,
-  onImport,
-}: {
-  onStart: () => void
-  onImport: () => void
-}) {
-  const hasNodes = useDiagramStore((s) => s.nodes.length > 0)
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <Code2 className="h-7 w-7 text-slate-300" />
-      <p className="text-[11px] leading-relaxed text-slate-500">
-        Describe the system in text and the diagram draws itself — no dragging, no
-        coordinates.
-      </p>
-
-      <button
-        onClick={onStart}
-        className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-slate-700"
-      >
-        <Sparkles className="h-3 w-3" />
-        Start from an example
-      </button>
-
-      {hasNodes && (
-        <button
-          onClick={onImport}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <FileDown className="h-3 w-3" />
-          Generate from this canvas
-        </button>
-      )}
-    </div>
-  )
-}
