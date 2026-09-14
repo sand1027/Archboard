@@ -5,12 +5,10 @@ import { useCallback, useRef, useState, useEffect } from 'react'
 import PresenceAvatars from '@/components/collab/PresenceAvatars'
 import {
   Undo2, Redo2, Download,
-  LayoutTemplate, Keyboard, Grid3x3, Magnet, ZoomIn,
-  ZoomOut, Maximize2, Clock, ChevronLeft,
-  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator, UserPlus,
+  LayoutTemplate, Keyboard, Clock, ChevronLeft,
+  CheckCircle2, Loader2, AlertCircle, LogOut, Zap, Calculator, UserPlus, Code2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useReactFlow } from '@xyflow/react'
 import { createClient } from '@/lib/supabase/client'
 import { useDiagramStore } from '@/store/diagramStore'
 import LldComponentPicker from '@/components/lld/LldComponentPicker'
@@ -26,12 +24,10 @@ interface TopToolbarProps {
 }
 
 export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpen, userEmail }: TopToolbarProps) {
-  const { diagramName, setDiagramName, snapToGrid, setSnapToGrid, showGrid, setShowGrid, switchBoard, activeBoard } =
-    useDiagramStore()
+  const { diagramName, setDiagramName, switchBoard, activeBoard } = useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
-  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen, setShareModalOpen } =
+  const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen, setShareModalOpen, codeOpen, setCodeOpen } =
     useUiStore()
-  const reactFlow = useReactFlow()
   const [lldPickerOpen, setLldPickerOpen] = useState(false)
   const router = useRouter()
   const [editingName, setEditingName] = useState(false)
@@ -90,20 +86,11 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
     }
   }, [redo])
 
-  const handleFitView = useCallback(() => {
-    reactFlow.fitView({ padding: 0.1, duration: 400 })
-  }, [reactFlow])
-
-  const handleZoomIn = useCallback(() => {
-    reactFlow.zoomIn({ duration: 200 })
-  }, [reactFlow])
-
-  const handleZoomOut = useCallback(() => {
-    reactFlow.zoomOut({ duration: 200 })
-  }, [reactFlow])
-
+  // `min-w-0` on the header matters: without it the row cannot shrink below its content, so
+  // instead of the diagram name truncating, the whole right-hand cluster was pushed past the
+  // edge and Export and the account controls became unreachable.
   return (
-    <header className="flex items-center gap-2 px-4 h-12 bg-white border-b border-gray-200 shrink-0 z-10">
+    <header className="flex items-center gap-2 px-4 h-12 bg-white border-b border-gray-200 shrink-0 z-10 min-w-0">
       {/* Logo */}
       <div className="flex items-center shrink-0 mr-1">
         <Image
@@ -152,8 +139,8 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
 
       <div className="w-px h-5 bg-gray-200" />
 
-      {/* Diagram name */}
-      <div className="flex items-center">
+      {/* Diagram name — the one thing that gives up space first, by truncating. */}
+      <div className="flex items-center min-w-0">
         {editingName ? (
           <input
             ref={nameRef}
@@ -171,7 +158,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
         ) : (
           <button
             onClick={() => setEditingName(true)}
-            className="text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors max-w-[200px] truncate"
+            className="text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-2 py-1 rounded transition-colors max-w-[200px] min-w-0 truncate"
           >
             {diagramName}
           </button>
@@ -210,48 +197,18 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
         </>
       )}
 
-      {/* Canvas controls */}
-      <div className="flex items-center gap-0.5">
-        <ToolbarButton
-          onClick={handleZoomOut}
-          title="Zoom out"
-          icon={<ZoomOut className="w-4 h-4" />}
-        />
-        <ToolbarButton
-          onClick={handleZoomIn}
-          title="Zoom in"
-          icon={<ZoomIn className="w-4 h-4" />}
-        />
-        <ToolbarButton
-          onClick={handleFitView}
-          title="Fit to screen"
-          icon={<Maximize2 className="w-4 h-4" />}
-        />
-      </div>
-
-      <div className="w-px h-5 bg-gray-200" />
-
-      {/* Grid & snap */}
-      <div className="flex items-center gap-0.5">
-        <ToolbarButton
-          onClick={() => setShowGrid(!showGrid)}
-          title={showGrid ? 'Hide grid' : 'Show grid'}
-          active={showGrid}
-          icon={<Grid3x3 className="w-4 h-4" />}
-        />
-        <ToolbarButton
-          onClick={() => setSnapToGrid(!snapToGrid)}
-          title={snapToGrid ? 'Disable snap' : 'Enable snap to grid'}
-          active={snapToGrid}
-          icon={<Magnet className="w-4 h-4" />}
-        />
-      </div>
+      {/*
+        Zoom, fit, grid and snap used to sit here. They are now a floating cluster on the
+        canvas itself — see components/canvas/CanvasControls.tsx. They describe how you are
+        looking at the canvas rather than anything about the diagram, and five more buttons
+        was what pushed this row past the width of a laptop screen.
+      */}
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Right side actions */}
-      <div className="flex items-center gap-1">
+      {/* Right side actions. Never shrinks — these are the ones that must stay reachable. */}
+      <div className="flex items-center gap-1 shrink-0">
         <ToolbarButton
           onClick={() => setTemplateModalOpen(true)}
           title="Templates"
@@ -263,35 +220,44 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
           title="Keyboard shortcuts"
           icon={<Keyboard className="w-4 h-4" />}
         />
-        {/* Simulate button */}
-        <button
-          onClick={() => setSimulationOpen(!simulationOpen)}
-          title="Simulate request flow"
-          className={[
-            'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border',
-            simulationOpen
-              ? 'bg-blue-600 text-white border-blue-700 shadow-sm'
-              : 'text-gray-700 border-gray-200 bg-white hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300',
-          ].join(' ')}
-        >
-          <Zap className="w-4 h-4" />
-          <span>Simulate</span>
-        </button>
+        {/*
+          The three panels, as one segmented control.
 
-        {/* Capacity estimate — the workload the simulation should be sized against. */}
-        <button
-          onClick={() => setEstimateOpen(!estimateOpen)}
-          title="Back-of-envelope capacity estimate"
-          className={[
-            'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border',
-            estimateOpen
-              ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
-              : 'text-gray-700 border-gray-200 bg-white hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300',
-          ].join(' ')}
+          They were three separate bordered buttons with permanent labels, which together ate
+          most of the right-hand space and pushed Export and the account controls off the edge
+          of the bar. Grouping them also says what is true — these are views onto the same
+          diagram — and matches the HLD/LLD switch on the left.
+        */}
+        <div
+          className="flex items-center p-0.5 rounded-lg bg-slate-100 border border-slate-200/80 shrink-0"
+          role="group"
+          aria-label="Panels"
         >
-          <Calculator className="w-4 h-4" />
-          <span>Capacity</span>
-        </button>
+          <PanelToggle
+            onClick={() => setCodeOpen(!codeOpen)}
+            active={codeOpen}
+            title="Write the diagram as code"
+            icon={<Code2 className="w-3.5 h-3.5" />}
+            label="Code"
+            activeClass="bg-white text-slate-900 shadow-sm"
+          />
+          <PanelToggle
+            onClick={() => setSimulationOpen(!simulationOpen)}
+            active={simulationOpen}
+            title="Simulate request flow"
+            icon={<Zap className="w-3.5 h-3.5" />}
+            label="Simulate"
+            activeClass="bg-white text-blue-700 shadow-sm"
+          />
+          <PanelToggle
+            onClick={() => setEstimateOpen(!estimateOpen)}
+            active={estimateOpen}
+            title="Back-of-envelope capacity estimate"
+            icon={<Calculator className="w-3.5 h-3.5" />}
+            label="Capacity"
+            activeClass="bg-white text-indigo-700 shadow-sm"
+          />
+        </div>
 
         {/* History button — only in cloud mode */}
         {/* Who else is in the diagram. Shown before Share, since it answers "is anyone
@@ -307,7 +273,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
               hover:bg-slate-50 hover:text-slate-900 hover:border-slate-300"
           >
             <UserPlus className="w-4 h-4" />
-            <span>Share</span>
+            <span className="hidden lg:inline">Share</span>
           </button>
         )}
 
@@ -348,7 +314,8 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
                 <path d="M5 1v4h6V1M5 9h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               </svg>
             )}
-            <span>
+            {/* Kept at more widths than the other labels: the wording is the status. */}
+            <span className="hidden lg:inline">
               {saveStatus === 'saving' ? 'Saving…'
                : saveStatus === 'saved' ? 'Saved'
                : saveStatus === 'error' ? 'Failed'
@@ -365,7 +332,7 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
             text-white text-sm font-medium rounded-lg transition-colors"
         >
           <Download className="w-4 h-4" />
-          <span>Export</span>
+          <span className="hidden lg:inline">Export</span>
         </button>
 
         {/* User avatar + sign out — only in cloud mode */}
@@ -416,7 +383,7 @@ function ToolbarButton({ onClick, icon, title, disabled, active, label }: Toolba
       disabled={disabled}
       title={title}
       className={[
-        'flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm transition-colors',
+        'flex items-center gap-1 px-2 py-1.5 rounded-lg text-sm transition-colors shrink-0',
         disabled
           ? 'text-gray-300 cursor-not-allowed'
           : active
@@ -425,7 +392,36 @@ function ToolbarButton({ onClick, icon, title, disabled, active, label }: Toolba
       ].join(' ')}
     >
       {icon}
-      {label && <span className="text-xs font-medium">{label}</span>}
+      {/* Below this the icon and its tooltip carry the meaning on their own. */}
+      {label && <span className="hidden lg:inline text-xs font-medium">{label}</span>}
+    </button>
+  )
+}
+
+interface PanelToggleProps {
+  onClick: () => void
+  icon: React.ReactNode
+  title: string
+  label: string
+  active: boolean
+  /** Colour for the active state, so each panel keeps the accent it already had. */
+  activeClass: string
+}
+
+function PanelToggle({ onClick, icon, title, label, active, activeClass }: PanelToggleProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={[
+        'flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors',
+        active ? activeClass : 'text-slate-500 hover:text-slate-700',
+      ].join(' ')}
+    >
+      {icon}
+      <span className="hidden md:inline">{label}</span>
     </button>
   )
 }
