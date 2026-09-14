@@ -16,11 +16,13 @@ import { generateId } from '@/lib/canvas/ids'
 import { normaliseNodesConnectable } from '@/lib/canvas/nodeConnectivity'
 import { useEstimateStore } from '@/store/estimateStore'
 import { normaliseWorkload, sanitiseOverrides } from '@/lib/estimate/workload'
+import { normalisePins, useDslStore } from '@/store/dslStore'
 import type { BoardMode, BoardSnapshot } from '@/types/diagram'
 import type { LldWorkspace } from '@/types/lld'
 import type { WorkloadDocument } from '@/types/estimate'
+import type { DslDocument } from '@/types/dslDocument'
 
-export const DOCUMENT_VERSION = 4
+export const DOCUMENT_VERSION = 5
 
 export interface ArchboardDocument {
   version: number
@@ -33,6 +35,14 @@ export interface ArchboardDocument {
    * living in browser-local settings. Absent on documents written before v4.
    */
   workload?: WorkloadDocument
+  /**
+   * The HLD text source and its position pins. Absent on documents written before v5, and
+   * on any diagram that has only ever been drawn.
+   *
+   * Additive, like `workload` before it — the nodes and edges remain the rendered truth, so
+   * a document with no `dsl` key opens exactly as it did.
+   */
+  dsl?: DslDocument
 }
 
 export function emptyBoard(name: string): BoardSnapshot {
@@ -54,7 +64,20 @@ export function buildDocument(): ArchboardDocument {
     boards,
     lldWorkspaces: useLldStore.getState().getPersistPayload(),
     workload: useEstimateStore.getState().getPersistPayload(),
+    dsl: dslPayload(),
   }
+}
+
+/**
+ * The DSL document, or nothing.
+ *
+ * Omitted entirely when the diagram was never authored as text, so a drawn diagram's stored
+ * JSON does not grow an empty key.
+ */
+function dslPayload(): DslDocument | undefined {
+  const payload = useDslStore.getState().getPersistPayload()
+  if (!payload.enabled && !payload.source) return undefined
+  return payload
 }
 
 /**
@@ -83,6 +106,7 @@ export function migrateDocument(raw: unknown): ArchboardDocument | null {
       },
       lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
       workload: normaliseWorkloadDoc(raw.workload),
+      dsl: normaliseDslDoc(raw.dsl),
     }
   }
 
@@ -103,6 +127,7 @@ export function migrateDocument(raw: unknown): ArchboardDocument | null {
       },
       lldWorkspaces: normaliseWorkspaces(raw.lldWorkspaces),
       workload: normaliseWorkloadDoc(raw.workload),
+      dsl: normaliseDslDoc(raw.dsl),
     }
   }
 
@@ -118,6 +143,8 @@ export function applyDocument(doc: ArchboardDocument): void {
   useLldStore.getState().hydrate(doc.lldWorkspaces)
   // Undefined for pre-v4 documents; hydrate falls back to the default workload.
   useEstimateStore.getState().hydrate(doc.workload)
+  // Undefined for pre-v5 documents and for any diagram that has only ever been drawn.
+  useDslStore.getState().hydrate(doc.dsl)
   useUiStore.getState().setBoardMode(doc.activeBoard)
 }
 
@@ -187,6 +214,24 @@ function normaliseWorkloadDoc(input: unknown): WorkloadDocument | undefined {
     inputs: normaliseWorkload(input.inputs),
     overrides: sanitiseOverrides(input.overrides),
   }
+}
+
+/**
+ * Accept a stored DSL document only if it is shaped like one.
+ *
+ * `enabled` defaults to whether there is any source at all: a document written by an older
+ * client that somehow carries text but no flag should still open as code rather than looking
+ * like an empty editor next to a full canvas.
+ */
+function normaliseDslDoc(input: unknown): DslDocument | undefined {
+  if (!isRecord(input)) return undefined
+
+  const source = typeof input.source === 'string' ? input.source : ''
+  const pins = normalisePins(input.pins)
+  const enabled = typeof input.enabled === 'boolean' ? input.enabled : source.length > 0
+
+  if (!source && !enabled && Object.keys(pins).length === 0) return undefined
+  return { source, pins, enabled }
 }
 
 function normaliseWorkspaces(input: unknown): Record<string, LldWorkspace> {
