@@ -84,6 +84,12 @@ export const NOTE_KINDS: NoteKind[] = [
  */
 export const NOTE_LINE_HEIGHT = 28
 
+/** Next multiple of the rule spacing, so writing after a picture lands on a line. */
+export function snapToNoteLine(height: number): number {
+  if (height <= 0) return NOTE_LINE_HEIGHT
+  return Math.ceil(height / NOTE_LINE_HEIGHT) * NOTE_LINE_HEIGHT
+}
+
 // ─── copy ─────────────────────────────────────────────────────────────────────
 
 export const KIND_LABEL: Record<NoteKind, string> = {
