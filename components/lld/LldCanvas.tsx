@@ -24,6 +24,7 @@ import { DND_MIME } from '@/lib/canvas/dnd'
 import { LldMarkerDefs, type MarkerPair } from '@/lib/canvas/markers'
 import { NOTATION, cardinalityMarker } from '@/lib/canvas/notation'
 import { useCanvasDrop } from '@/hooks/useCanvasDrop'
+import { useEditingText } from '@/hooks/useEditingText'
 import { spawnShape } from '@/lib/lld/spawnShape'
 import { edgeTypeForKind, findPaletteShape, getSpec } from '@/lib/lld/specs'
 import {
@@ -129,6 +130,7 @@ export default function LldCanvas({ scopeId, diagram }: LldCanvasProps) {
   const setViewport = useLldStore((s) => s.setViewport)
   const pushHistory = useLldStore((s) => s.pushHistory)
   const armedEdgeKind = useLldStore((s) => s.armedEdgeKind)
+  const editingText = useEditingText()
 
   const snapshot = useCallback(
     () => pushHistory(scopeId, diagram.id),
@@ -347,7 +349,7 @@ export default function LldCanvas({ scopeId, diagram }: LldCanvasProps) {
           connectionRadius={45}
           selectionMode={SelectionMode.Partial}
           multiSelectionKeyCode="Shift"
-          deleteKeyCode={['Backspace', 'Delete']}
+          deleteKeyCode={editingText ? null : ['Backspace', 'Delete']}
           minZoom={0.1}
           maxZoom={4}
           elevateNodesOnSelect={false}
