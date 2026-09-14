@@ -18,12 +18,14 @@ import { useUiStore } from '@/store/uiStore'
 interface TopToolbarProps {
   diagramId?: string
   saveStatus?: 'idle' | 'saving' | 'saved' | 'error'
+  /** Work exists locally that has not reached the cloud yet. */
+  unsaved?: boolean
   onSave?: () => void
   onHistoryOpen?: () => void
   userEmail?: string
 }
 
-export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpen, userEmail }: TopToolbarProps) {
+export default function TopToolbar({ diagramId, saveStatus, unsaved, onSave, onHistoryOpen, userEmail }: TopToolbarProps) {
   const { diagramName, setDiagramName, switchBoard, activeBoard } = useDiagramStore()
   const { canUndo, canRedo, undo, redo } = useHistoryStore()
   const { setTemplateModalOpen, setShortcutsModalOpen, setExportModalOpen, setBoardMode, boardMode, simulationOpen, setSimulationOpen, estimateOpen, setEstimateOpen, setShareModalOpen, codeOpen, setCodeOpen } =
@@ -289,11 +291,25 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
         <div className="w-px h-5 bg-gray-200 mx-1" />
 
         {/* Save button — only in cloud mode */}
+        {/*
+          Save state, not just a Save button.
+
+          Saving is now automatic, so this mostly reports rather than invites — but it stays
+          clickable, because when a save has failed the one thing someone wants is to try
+          again. The idle-but-dirty state is the one that was missing: work sitting only in
+          this browser used to look identical to work safely in the cloud.
+        */}
         {isCloudMode && onSave && (
           <button
             onClick={onSave}
             disabled={saveStatus === 'saving'}
-            title="Save to cloud (⌘S)"
+            title={
+              saveStatus === 'error'
+                ? 'Could not reach the server — click to retry'
+                : unsaved
+                  ? 'Unsaved changes, saving shortly (⌘S to save now)'
+                  : 'Everything is saved (⌘S)'
+            }
             className={[
               'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-all border',
               saveStatus === 'saving'
@@ -302,24 +318,30 @@ export default function TopToolbar({ diagramId, saveStatus, onSave, onHistoryOpe
                 ? 'bg-green-50 text-green-700 border-green-200'
                 : saveStatus === 'error'
                 ? 'bg-red-50 text-red-600 border-red-200'
+                : unsaved
+                ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
                 : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300',
             ].join(' ')}
           >
             {saveStatus === 'saving' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {saveStatus === 'saved'  && <CheckCircle2 className="w-3.5 h-3.5" />}
             {saveStatus === 'error'  && <AlertCircle className="w-3.5 h-3.5" />}
-            {(!saveStatus || saveStatus === 'idle') && (
-              <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none">
-                <path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-2-3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-                <path d="M5 1v4h6V1M5 9h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            )}
+            {(!saveStatus || saveStatus === 'idle') &&
+              (unsaved ? (
+                // A filled dot is the established "not written yet" mark in an editor.
+                <span className="w-3.5 h-3.5 flex items-center justify-center" aria-hidden>
+                  <span className="w-2 h-2 rounded-full bg-current" />
+                </span>
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              ))}
             {/* Kept at more widths than the other labels: the wording is the status. */}
             <span className="hidden lg:inline">
               {saveStatus === 'saving' ? 'Saving…'
                : saveStatus === 'saved' ? 'Saved'
-               : saveStatus === 'error' ? 'Failed'
-               : 'Save'}
+               : saveStatus === 'error' ? 'Retry'
+               : unsaved ? 'Unsaved'
+               : 'Saved'}
             </span>
           </button>
         )}

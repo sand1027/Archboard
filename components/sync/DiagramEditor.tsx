@@ -21,7 +21,7 @@ interface Props {
 
 export default function DiagramEditor({ diagramId, initialData, initialName, userId, userEmail, teamId }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false)
-  const { saveStatus, save, saveVersion } = useDiagramSync(diagramId)
+  const { saveStatus, dirty, save, saveVersion } = useDiagramSync(diagramId)
   const { capture } = useThumbnail(diagramId, userId)
 
   // Hydrate both stores from Supabase data on mount. All payload shapes —
@@ -50,6 +50,7 @@ export default function DiagramEditor({ diagramId, initialData, initialName, use
         <WhiteboardApp
           diagramId={diagramId}
           saveStatus={saveStatus}
+          unsaved={dirty}
           onSave={handleSave}
           onHistoryOpen={() => setHistoryOpen(true)}
           userId={userId}

@@ -15,6 +15,7 @@ import CollaborationLayer from './collab/CollaborationLayer'
 import ShareModal from './collab/ShareModal'
 import LldWorkspace from './lld/LldWorkspace'
 import DslPanel from './dsl/DslPanel'
+import LocalModeBanner from './LocalModeBanner'
 import { useDiagramPersistence } from '@/hooks/useDiagramPersistence'
 import { useDslSync } from '@/hooks/useDslSync'
 import { useUiStore } from '@/store/uiStore'
@@ -25,6 +26,8 @@ import { STANDALONE_LLD_SCOPE } from '@/types/lld'
 export interface WhiteboardAppProps {
   diagramId?: string
   saveStatus?: 'idle' | 'saving' | 'saved' | 'error'
+  /** Work exists locally that has not reached the cloud yet. */
+  unsaved?: boolean
   onSave?: () => void
   onHistoryOpen?: () => void
   userId?: string
@@ -36,6 +39,7 @@ export interface WhiteboardAppProps {
 function AppInner({
   diagramId,
   saveStatus,
+  unsaved,
   onSave,
   onHistoryOpen,
   userId,
@@ -74,10 +78,14 @@ function AppInner({
       <TopToolbar
         diagramId={diagramId}
         saveStatus={saveStatus}
+        unsaved={unsaved}
         onSave={onSave}
         onHistoryOpen={onHistoryOpen}
         userEmail={userEmail}
       />
+
+      {/* No diagram id means no account behind this, so nothing here reaches a server. */}
+      {!diagramId && <LocalModeBanner />}
 
       {/* Live collaboration. Cloud mode only: a local diagram has no channel to join. */}
       {diagramId && userId && (
