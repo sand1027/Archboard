@@ -84,3 +84,63 @@ describe('workload persistence', () => {
     expect(migrateDocument(docWith(NODE_WITH_CONFIG))?.workload).toBeUndefined()
   })
 })
+
+describe('DSL persistence', () => {
+  const dsl = {
+    source: 'server api "API"\npostgresql db "Orders"\napi -> db',
+    pins: { api: { x: 120, y: 40 } },
+    enabled: true,
+  }
+
+  it('carries the source and pins through', () => {
+    const doc = migrateDocument({ ...docWith(NODE_WITH_CONFIG), dsl })
+    expect(doc?.dsl?.source).toBe(dsl.source)
+    expect(doc?.dsl?.pins).toEqual({ api: { x: 120, y: 40 } })
+    expect(doc?.dsl?.enabled).toBe(true)
+  })
+
+  /** Additive: a pre-v5 document must open exactly as it did. */
+  it('leaves the DSL undefined when absent', () => {
+    expect(migrateDocument(docWith(NODE_WITH_CONFIG))?.dsl).toBeUndefined()
+  })
+
+  it('ignores a DSL block with nothing in it', () => {
+    const doc = migrateDocument({
+      ...docWith(NODE_WITH_CONFIG),
+      dsl: { source: '', pins: {}, enabled: false },
+    })
+    expect(doc?.dsl).toBeUndefined()
+  })
+
+  /** Pins arrive from stored JSON, where a NaN would put a node somewhere unrenderable. */
+  it('drops a pin with a bad coordinate', () => {
+    const doc = migrateDocument({
+      ...docWith(NODE_WITH_CONFIG),
+      dsl: {
+        source: 'server api',
+        pins: { api: { x: 10, y: 20 }, bad: { x: 'left', y: 3 }, worse: null },
+        enabled: true,
+      },
+    })
+    expect(doc?.dsl?.pins).toEqual({ api: { x: 10, y: 20 } })
+  })
+
+  it('treats stored source with no flag as enabled', () => {
+    const doc = migrateDocument({
+      ...docWith(NODE_WITH_CONFIG),
+      dsl: { source: 'server api' },
+    })
+    expect(doc?.dsl?.enabled).toBe(true)
+  })
+
+  it('round-trips through JSON, which is how it is actually stored', () => {
+    const raw = JSON.parse(JSON.stringify({ ...docWith(NODE_WITH_CONFIG), dsl }))
+    expect(migrateDocument(raw)?.dsl).toEqual(dsl)
+  })
+
+  it('bumps a v1 flat document to the current version', () => {
+    const doc = migrateDocument({ nodes: [NODE_WITH_CONFIG], edges: [], dsl })
+    expect(doc?.version).toBe(5)
+    expect(doc?.dsl?.source).toBe(dsl.source)
+  })
+})

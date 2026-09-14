@@ -14,7 +14,9 @@ import EstimatePanel from './estimate/EstimatePanel'
 import CollaborationLayer from './collab/CollaborationLayer'
 import ShareModal from './collab/ShareModal'
 import LldWorkspace from './lld/LldWorkspace'
+import DslPanel from './dsl/DslPanel'
 import { useDiagramPersistence } from '@/hooks/useDiagramPersistence'
+import { useDslSync } from '@/hooks/useDslSync'
 import { useUiStore } from '@/store/uiStore'
 import { useDiagramStore } from '@/store/diagramStore'
 import { simulationEngine } from '@/lib/simulation/engine'
@@ -44,6 +46,10 @@ function AppInner({
   // by CanvasShell, which unmounts in LLD mode.
   useDiagramPersistence()
 
+  // Owned here rather than by the code pane: a diagram authored as text has to render on
+  // load whether or not the editor happens to be open.
+  useDslSync()
+
   // The engine is a module singleton driving its own animation frames. Nothing
   // stopped it when the editor went away, so navigating to the dashboard left a
   // loop running and writing packets into the store for a canvas that no longer
@@ -51,6 +57,7 @@ function AppInner({
   useEffect(() => () => simulationEngine.reset(), [])
 
   const libraryOpen = useUiStore((s) => s.libraryOpen)
+  const codeOpen = useUiStore((s) => s.codeOpen)
   const inspectorOpen = useUiStore((s) => s.inspectorOpen)
   const simulationOpen = useUiStore((s) => s.simulationOpen)
   const estimateOpen = useUiStore((s) => s.estimateOpen)
@@ -92,16 +99,24 @@ function AppInner({
         />
       ) : (
         <div className="flex flex-1 overflow-hidden">
-          {/* Left: HLD component library */}
+          {/*
+            Left rail: the component library, or the code editor. One at a time, since
+            writing the diagram out in text and dragging components into it are not things
+            anyone does in the same moment. Code gets more room — it is text.
+          */}
           <aside
             className="flex-shrink-0 overflow-hidden border-r border-slate-200/80 bg-white transition-all duration-200"
-            style={{ width: libraryOpen ? 240 : 0 }}
+            style={{ width: codeOpen ? 400 : libraryOpen ? 240 : 0 }}
           >
-            {libraryOpen && (
+            {codeOpen ? (
+              <div className="h-full w-[400px] overflow-hidden">
+                <DslPanel />
+              </div>
+            ) : libraryOpen ? (
               <div className="h-full w-[240px] overflow-hidden">
                 <ComponentLibrary />
               </div>
-            )}
+            ) : null}
           </aside>
 
           <main className="relative flex-1 overflow-hidden">

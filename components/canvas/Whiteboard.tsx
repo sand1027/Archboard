@@ -16,6 +16,7 @@ import {
   type OnNodesChange,
   type OnEdgesChange,
   type OnConnect,
+  type OnNodeDrag,
   type Node,
   type Edge,
   useReactFlow,
@@ -39,6 +40,7 @@ import UmlEntityNodeComponent from './UmlEntityNode'
 import UmlLifelineNodeComponent from './UmlLifelineNode'
 import IconNodeComponent from './IconNode'
 import ShapesToolbar from './ShapesToolbar'
+import CanvasControls from './CanvasControls'
 import ContextMenuComponent from '../ui/ContextMenu'
 import PacketLayer from '../simulation/PacketLayer'
 import CursorLayer from '../collab/CursorLayer'
@@ -46,6 +48,7 @@ import { generateId } from '@/lib/canvas/ids'
 import { nodeBounds, centerInside, isContainerNode } from '@/lib/canvas/geometry'
 import { DND_MIME } from '@/lib/canvas/dnd'
 import { useCanvasDrop } from '@/hooks/useCanvasDrop'
+import { pinDraggedNode } from '@/hooks/useDslSync'
 import { LldMarkerDefs, type MarkerPair } from '@/lib/canvas/markers'
 import { HLD_NOTATION } from '@/lib/canvas/hldNotation'
 import { NOTATION } from '@/lib/canvas/notation'
@@ -709,9 +712,24 @@ export default function Whiteboard() {
     )
   }, [])
 
-  const handleNodeDragStop = useCallback(() => {
-    groupDrag.current = null
-  }, [])
+  /**
+   * A drag is the one thing that pins a node's position when the diagram is code-driven.
+   *
+   * Hooked to the real drag event rather than inferred from a store diff, because auto layout
+   * writes to the same `position` field — a diff cannot tell "the user moved this" from "the
+   * layout moved this", and mistaking the second for the first would pin everything on the
+   * first recompile and freeze the layout for good.
+   */
+  const handleNodeDragStop: OnNodeDrag<Node> = useCallback(
+    (_event, node, nodes) => {
+      groupDrag.current = null
+
+      // Everything that moved, so dragging a frame pins its members where they landed too.
+      const moved = nodes.length > 0 ? nodes : [node]
+      for (const dragged of moved) pinDraggedNode(dragged as ArchitectureNode)
+    },
+    []
+  )
 
   // ── selection sync ─────────────────────────────────────────────────────────
   const handleSelectionChange = useCallback(
@@ -930,6 +948,11 @@ export default function Whiteboard() {
         {/* Floating shapes toolbar — bottom-centre of canvas */}
         <Panel position="bottom-center" style={{ marginBottom: 16 }}>
           <ShapesToolbar />
+        </Panel>
+
+        {/* View controls, moved off the top bar so it stops overflowing. */}
+        <Panel position="bottom-left" style={{ marginBottom: 16, marginLeft: 16 }}>
+          <CanvasControls />
         </Panel>
       </ReactFlow>
 
