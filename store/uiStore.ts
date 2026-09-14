@@ -35,6 +35,25 @@ export type ActiveTool =
 type ActivePanel = 'library' | 'inspector' | 'templates'
 type Theme = 'light' | 'dark'
 
+/** The right rail's panels. Exactly one may be open. */
+type RailPanel = 'simulationOpen' | 'estimateOpen' | 'notesOpen'
+
+const RAIL_PANELS: RailPanel[] = ['simulationOpen', 'estimateOpen', 'notesOpen']
+
+/**
+ * Open one rail panel and close the others, or just close this one.
+ *
+ * Returns a partial state patch, so each setter stays a one-liner and the exclusion rule lives
+ * in a single place instead of being restated per pair.
+ */
+function openOnly(panel: RailPanel, open: boolean): Partial<Record<RailPanel, boolean>> {
+  if (!open) return { [panel]: false }
+
+  const patch: Partial<Record<RailPanel, boolean>> = {}
+  for (const key of RAIL_PANELS) patch[key] = key === panel
+  return patch
+}
+
 const DEFAULT_EDGE_STYLE: EdgeStylePreset = {
   strokeColor: '#374151',
   strokeWidth: 1.5,
@@ -99,6 +118,8 @@ interface UiState {
   shareModalOpen: boolean
   simulationOpen: boolean
   estimateOpen: boolean
+  /** Requirements — FR, NFR and assumptions. Shares the right rail. */
+  notesOpen: boolean
   /**
    * The text editor pane. Shares the left rail with the component library, because writing
    * code and dragging components are not things anyone does at the same moment.
@@ -143,6 +164,7 @@ interface UiState {
   setShareModalOpen: (open: boolean) => void
   setSimulationOpen: (open: boolean) => void
   setEstimateOpen: (open: boolean) => void
+  setNotesOpen: (open: boolean) => void
   setCodeOpen: (open: boolean) => void
   setContextMenu: (menu: UiState['contextMenu']) => void
   hideContextMenu: () => void
@@ -185,6 +207,7 @@ export const useUiStore = create<UiState>()(
       shareModalOpen: false,
       simulationOpen: false,
       estimateOpen: false,
+      notesOpen: false,
       codeOpen: false,
       contextMenu: { visible: false, x: 0, y: 0, type: 'canvas' },
       theme: 'light',
@@ -225,11 +248,16 @@ export const useUiStore = create<UiState>()(
       setShortcutsModalOpen: (shortcutsModalOpen) => set({ shortcutsModalOpen }),
       setExportModalOpen: (exportModalOpen) => set({ exportModalOpen }),
       setShareModalOpen: (shareModalOpen) => set({ shareModalOpen }),
-      // The right rail holds one panel at a time, so opening either closes the other.
-      setSimulationOpen: (simulationOpen) =>
-        set(simulationOpen ? { simulationOpen, estimateOpen: false } : { simulationOpen }),
-      setEstimateOpen: (estimateOpen) =>
-        set(estimateOpen ? { estimateOpen, simulationOpen: false } : { estimateOpen }),
+      /*
+       * The right rail holds one panel at a time, so opening one closes the rest.
+       *
+       * Written as a shared helper rather than three hand-maintained pairs: with three panels
+       * that is six exclusions to keep in step, and the one someone forgets is the one that
+       * leaves two panels fighting over the same 280px.
+       */
+      setSimulationOpen: (open) => set(openOnly('simulationOpen', open)),
+      setEstimateOpen: (open) => set(openOnly('estimateOpen', open)),
+      setNotesOpen: (open) => set(openOnly('notesOpen', open)),
       /**
        * Deliberately does not touch `libraryOpen`.
        *
