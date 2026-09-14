@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useDiagramStore } from '@/store/diagramStore'
 import { useLldStore } from '@/store/lldStore'
+import { useNotesStore } from '@/store/notesStore'
 import { useEstimateStore } from '@/store/estimateStore'
 import {
   applyRawDocument,
@@ -77,10 +78,16 @@ export function useDiagramPersistence() {
     // members are actions, which never change — so any update is a change worth saving.
     const unsubEstimate = useEstimateStore.subscribe(scheduleSave)
 
+    // Requirements are part of the document too, and for the same reason as the workload
+    // above: without this, writing them and touching nothing else would lose the lot.
+    // Unselected because the item list is the whole of that store's state.
+    const unsubNotes = useNotesStore.subscribe(scheduleSave)
+
     return () => {
       unsubDiagram()
       unsubLld()
       unsubEstimate()
+      unsubNotes()
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current)
     }
   }, [])
